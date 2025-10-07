@@ -9,6 +9,8 @@ import { makeHitXZ } from "./nav.js";
 import { setupSwitches } from "./switches.js";
 import { setupCrystals } from "./crystals.js";
 import { setupRunds } from "./runds.js";
+import { createAudioMixer } from "./audio.js";
+
 import {
   START_YAW_DEG,
   START_PITCH_DEG,
@@ -40,35 +42,30 @@ const { controls, update } = setupMovement(camera, renderer);
 // ---------- FLASHLIGHT (SpotLight on a 45°-down rig) ----------
 scene.add(camera); // ensure camera is in the scene graph
 
-// pivot that pitches the light down ~45°
+// pivot that pitches the beam (set to 0 to follow camera exactly)
 const flashRig = new THREE.Object3D();
-flashRig.rotation.x = 0 // -45° DOWN (pitch), not Z
+flashRig.rotation.x = 0; // -Math.PI / 4 for 45° down
 camera.add(flashRig);
 
-// your spotlight (kept your settings)
+// spotlight (tweak to taste)
 const flashlight = new THREE.SpotLight(
-  0xffffff,                      // color
-  50,                           // intensity
-  400,                           // distance
-  THREE.MathUtils.degToRad(60),  // cone angle
-  0.9,                           // penumbra
-  0.8                            // decay
+  0xffffff, // color
+  50, // intensity
+  400, // distance
+  THREE.MathUtils.degToRad(60), // cone angle
+  0.9, // penumbra
+  0.8 // decay
 );
-
-// optional shadows (heavier):
 // renderer.shadowMap.enabled = true;
 // flashlight.castShadow = true;
 
-// mount light on the rig
 flashRig.add(flashlight);
 flashlight.position.set(0, 0, 0);
 
-// explicit target: forward in rig space (rig is already tilted down)
 const flashTarget = new THREE.Object3D();
 flashTarget.position.set(0, 0, -1);
 flashRig.add(flashTarget);
 flashlight.target = flashTarget;
-
 
 // ---------- Pointer lock ↔ UI (gated, no rAF) ----------
 let wantingLock = false;
@@ -141,17 +138,38 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
 ui.btnStart.addEventListener("click", async () => {
   ui.showOnly("loading");
 
+  // --- AUDIO: init inside this user gesture so it can play immediately ---
+  const audio = createAudioMixer({
+    urls: [
+      "/audio/track1.wav",
+      "/audio/track2.wav",
+      "/audio/track3.wav",
+      "/audio/track4.wav",
+      "/audio/track5.wav",
+    ],
+    fade: 0, // instant switches
+    snap: 0.008, // tiny ramp to avoid clicks
+    initialLevel: 1, // Track 1 on
+  });
+
+  try {
+    await audio.init(); // ← guarantees track 1 starts now
+    audio.context()?.resume?.(); // just in case
+  } catch (err) {
+    console.error("[Audio] init error:", err);
+  }
+
+  // --- WORLD: load as you already do ---
   const { worldRoot, navMesh } = await loadWorld({
     onProgress: (p) => (ui.bar.style.width = p + "%"),
   });
 
-  // World
+  // World setup (unchanged)
   worldRoot.scale.set(5, 5, 5);
   worldRoot.rotation.y = Math.PI * 1.2;
   scene.add(worldRoot);
   window.worldRoot = worldRoot;
 
-  // Nav (invisible but raycastable)
   navMesh.traverse((o) => {
     if (o.isMesh && o.material) {
       o.material.transparent = true;
@@ -171,40 +189,51 @@ ui.btnStart.addEventListener("click", async () => {
   const h = hitXZ(c.x, c.z);
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
-const switches = setupSwitches(
-  worldRoot,
-  renderer,
-  camera,
-  controls,
-  whatDidIHit
-);
-const crystals = setupCrystals(worldRoot);
-const runds = setupRunds(worldRoot);
+  // Interactions/visuals
+  const switches = setupSwitches(
+    worldRoot,
+    renderer,
+    camera,
+    controls,
+    whatDidIHit
+  );
+  const crystals = setupCrystals(worldRoot);
+  const runds = setupRunds(worldRoot);
 
-// when a switch toggles: crystal + rund with same id follow
-switches.onToggle = (id, on) => {
-  crystals.setCrystalOn(id, on);
-  runds.setRundOn(id, on);
-};
+  // MUSIC: level = 1 + number of ON switches
+  function updateMusicLevel() {
+    const onCount = Array.from(switches.switches.values()).reduce(
+      (n, s) => n + (s.on ? 1 : 0),
+      0
+    );
+    audio.setLevel(1 + onCount);
+  }
 
-  // Controls overlay → lock on click
+  switches.onToggle = (id, on) => {
+    crystals.setCrystalOn(id, on);
+    runds.setRundOn(id, on);
+    updateMusicLevel();
+  };
+
+  // Controls overlay → lock on click; ensure audio context active
   ui.showOnly("controls");
-  ui.btnContinue.addEventListener("click", requestLock, { once: true });
+  ui.btnContinue.addEventListener(
+    "click",
+    (e) => {
+      audio.context()?.resume?.();
+      requestLock(e);
+    },
+    { once: true }
+  );
 
-  // Resume overlay: button OR backdrop click
-  ui.btnResume.addEventListener("click", requestLock);
-  ui.resume.addEventListener("click", (e) => {
-    if (e.target === ui.resume) requestLock(e);
+  ui.btnResume.addEventListener("click", () => {
+    audio.context()?.resume?.();
+    requestLock();
   });
-
-  // (Removed) canvas auto-relock—caused races
-
-  // Tab switch
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      canvas.style.cursor = "default";
-    } else if (!controls.isLocked) {
-      ui.showOnly("resume");
+  ui.resume.addEventListener("click", (e) => {
+    if (e.target === ui.resume) {
+      audio.context()?.resume?.();
+      requestLock(e);
     }
   });
 
@@ -214,7 +243,7 @@ switches.onToggle = (id, on) => {
     const dt = Math.min(clock.getDelta(), MAX_DT);
     update(dt, hitXZ, EYE_HEIGHT);
     crystals.tick?.(dt);
-    runds.tick?.(dt); // <— add this
+    runds.tick?.(dt);
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }

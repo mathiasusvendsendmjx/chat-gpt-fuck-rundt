@@ -1,8 +1,43 @@
-html, body { margin:0; height:100%; background:#0b0b0b; color:#fff; overflow:hidden; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
-button { font: inherit; }
-.overlay{ display:none; position:fixed; inset:0; align-items:center; justify-content:center; z-index:1000; }
-.overlay.show{ display:flex; }
-.modal { background:rgba(18,18,18,.6); border:1px solid rgba(255,255,255,.12); padding:18px 20px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.35); text-align:center; }
-.btn { padding:10px 14px; border:0; border-radius:10px; background:#4ade80; color:#0a0a0a; cursor:pointer; }
-canvas { display:block; }
-
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #000000;
+  color: #fff;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+    sans-serif;
+}
+button {
+  font: inherit;
+}
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.overlay.show {
+  display: flex;
+}
+.modal {
+  background: rgba(18, 18, 18, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 18px 20px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+.btn {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #4ade80;
+  color: #0a0a0a;
+  cursor: pointer;
+}
+canvas {
+  display: block;
+}

@@ -8,6 +8,7 @@ import { setupMovement } from "./movement.js";
 import { makeHitXZ } from "./nav.js";
 import { setupSwitches } from "./switches.js";
 import { setupCrystals } from "./crystals.js";
+import { setupRunds } from "./runds.js";
 import {
   START_YAW_DEG,
   START_PITCH_DEG,
@@ -36,34 +37,75 @@ function setFromDegrees(yawDeg, pitchDeg) {
 // Controls / movement
 const { controls, update } = setupMovement(camera, renderer);
 
-// Pointer lock ↔ UI
+// ---------- FLASHLIGHT (SpotLight on a 45°-down rig) ----------
+scene.add(camera); // ensure camera is in the scene graph
+
+// pivot that pitches the light down ~45°
+const flashRig = new THREE.Object3D();
+flashRig.rotation.x = 0 // -45° DOWN (pitch), not Z
+camera.add(flashRig);
+
+// your spotlight (kept your settings)
+const flashlight = new THREE.SpotLight(
+  0xffffff,                      // color
+  50,                           // intensity
+  400,                           // distance
+  THREE.MathUtils.degToRad(60),  // cone angle
+  0.9,                           // penumbra
+  0.8                            // decay
+);
+
+// optional shadows (heavier):
+// renderer.shadowMap.enabled = true;
+// flashlight.castShadow = true;
+
+// mount light on the rig
+flashRig.add(flashlight);
+flashlight.position.set(0, 0, 0);
+
+// explicit target: forward in rig space (rig is already tilted down)
+const flashTarget = new THREE.Object3D();
+flashTarget.position.set(0, 0, -1);
+flashRig.add(flashTarget);
+flashlight.target = flashTarget;
+
+
+// ---------- Pointer lock ↔ UI (gated, no rAF) ----------
+let wantingLock = false;
+
 controls.addEventListener("lock", () => {
+  wantingLock = false;
   canvas.style.cursor = "none";
   ui.showOnly(null);
 });
 controls.addEventListener("unlock", () => {
+  wantingLock = false;
   canvas.style.cursor = "default";
   ui.showOnly("resume");
 });
 document.addEventListener("pointerlockerror", () => {
+  wantingLock = false;
   canvas.style.cursor = "default";
   ui.showOnly("resume");
 });
 
-// single-gesture helper for resume/continue
-function hideOverlayThenLock(e) {
+function requestLock(e) {
   if (e) {
     e.preventDefault();
     e.stopPropagation();
   }
-  ui.showOnly(null);
-  requestAnimationFrame(() => {
-    canvas.focus({ preventScroll: true });
+  if (wantingLock || controls.isLocked || document.pointerLockElement) return;
+  wantingLock = true;
+  canvas.focus({ preventScroll: true });
+  try {
     controls.lock();
-  });
+  } catch (err) {
+    wantingLock = false;
+    console.error("PointerLock request failed:", err);
+  }
 }
 
-/* ---------- DEBUG: force emissive ON by name to prove materials glow ---------- */
+/* ---------- DEBUG helper (unchanged) ---------- */
 function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
   if (!window.worldRoot) return;
   const want = new Set(objNames.map((n) => String(n).toLowerCase()));
@@ -71,7 +113,6 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
     if (!o.isMesh) return;
     const nm = (o.name || "").toLowerCase();
     if (!want.has(nm)) return;
-
     const makeStd = (m) => {
       if (!m || !("emissive" in m)) {
         return new THREE.MeshStandardMaterial({
@@ -84,7 +125,6 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
     };
     if (Array.isArray(o.material)) o.material = o.material.map(makeStd);
     else o.material = makeStd(o.material);
-
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) {
       if (!("emissive" in m)) continue;
@@ -95,7 +135,7 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
     console.log("Emissive forced ON:", o.name);
   });
 }
-/* --------------------------------------------------------------------------- */
+/* ---------------------------------------------- */
 
 // FLOW
 ui.btnStart.addEventListener("click", async () => {
@@ -109,7 +149,7 @@ ui.btnStart.addEventListener("click", async () => {
   worldRoot.scale.set(5, 5, 5);
   worldRoot.rotation.y = Math.PI * 1.2;
   scene.add(worldRoot);
-  window.worldRoot = worldRoot; // for debug helper
+  window.worldRoot = worldRoot;
 
   // Nav (invisible but raycastable)
   navMesh.traverse((o) => {
@@ -131,36 +171,33 @@ ui.btnStart.addEventListener("click", async () => {
   const h = hitXZ(c.x, c.z);
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
-  // Switches & crystals
- const switches = setupSwitches(
-   worldRoot,
-   renderer,
-   camera,
-   controls,
-   whatDidIHit
- );
- const crystals = setupCrystals(worldRoot);
+const switches = setupSwitches(
+  worldRoot,
+  renderer,
+  camera,
+  controls,
+  whatDidIHit
+);
+const crystals = setupCrystals(worldRoot);
+const runds = setupRunds(worldRoot);
 
+// when a switch toggles: crystal + rund with same id follow
 switches.onToggle = (id, on) => {
   crystals.setCrystalOn(id, on);
+  runds.setRundOn(id, on);
 };
 
-  // Controls overlay → lock on pointerdown
+  // Controls overlay → lock on click
   ui.showOnly("controls");
-  ui.btnContinue.addEventListener("pointerdown", hideOverlayThenLock, {
-    once: true,
-  });
+  ui.btnContinue.addEventListener("click", requestLock, { once: true });
 
   // Resume overlay: button OR backdrop click
-  ui.btnResume.addEventListener("pointerdown", hideOverlayThenLock);
-  ui.resume.addEventListener("pointerdown", (e) => {
-    if (e.target === ui.resume) hideOverlayThenLock(e);
+  ui.btnResume.addEventListener("click", requestLock);
+  ui.resume.addEventListener("click", (e) => {
+    if (e.target === ui.resume) requestLock(e);
   });
 
-  // Extra: clicking the canvas relocks when overlays hidden
-  canvas.addEventListener("pointerdown", () => {
-    if (!controls.isLocked) controls.lock();
-  });
+  // (Removed) canvas auto-relock—caused races
 
   // Tab switch
   document.addEventListener("visibilitychange", () => {
@@ -177,6 +214,7 @@ switches.onToggle = (id, on) => {
     const dt = Math.min(clock.getDelta(), MAX_DT);
     update(dt, hitXZ, EYE_HEIGHT);
     crystals.tick?.(dt);
+    runds.tick?.(dt); // <— add this
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }

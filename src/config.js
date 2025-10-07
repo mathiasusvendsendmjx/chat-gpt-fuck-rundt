@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 export const START_FROM = 'DEGREES';
 export const START_YAW_DEG = 125;
-export const START_PITCH_DEG = 20;
+export const START_PITCH_DEG = 30;
 export const START_POS = new THREE.Vector3(140, 10, -100);
 export const LOOK_AT = new THREE.Vector3(100, 8, -140);
 export const EYE_HEIGHT = 10.0;
@@ -13,5 +13,5 @@ export const HOVER_COLOR = new THREE.Color('#f59e0b');
 export const HOVER_EMISSIVE_INTENSITY = 1.2;
 export const LAMP_COLOR_ON = new THREE.Color('#4ade80');
 export const LAMP_EMISSIVE_INTENSITY = 1.6;
-export const WORLD_URL = '/models/bundkort2.gltf';
+export const WORLD_URL = '/models/bundkort3.gltf';
 export const NAV_URL = '/models/nav1.gltf';

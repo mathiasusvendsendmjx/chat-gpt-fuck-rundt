@@ -132,22 +132,18 @@ ui.btnStart.addEventListener("click", async () => {
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
   // Switches & crystals
-  const switches = setupSwitches(
-    worldRoot,
-    renderer,
-    camera,
-    controls,
-    whatDidIHit
-  );
-  const crystals = setupCrystals(worldRoot);
+ const switches = setupSwitches(
+   worldRoot,
+   renderer,
+   camera,
+   controls,
+   whatDidIHit
+ );
+ const crystals = setupCrystals(worldRoot);
 
-  // Bind: switch i toggles crystal i
-  const originalToggle = switches.toggleSwitchById;
-  switches.toggleSwitchById = (i) => {
-    originalToggle(i);
-    const on = !!switches.switches.get(i)?.on;
-    crystals.setCrystalOn(i, on);
-  };
+switches.onToggle = (id, on) => {
+  crystals.setCrystalOn(id, on);
+};
 
   // Controls overlay → lock on pointerdown
   ui.showOnly("controls");
@@ -186,3 +182,7 @@ ui.btnStart.addEventListener("click", async () => {
   }
   animate();
 });
+
+function whatDidIHit(obj) {
+  console.log("hit", obj.name, obj.userData);
+}

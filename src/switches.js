@@ -7,49 +7,66 @@ const HOVER_EMISSIVE_INTENSITY = 1.2;
 const LAMP_COLOR_ON = new THREE.Color("#4ade80");
 const LAMP_EMISSIVE_INTENSITY = 1.6;
 
-export function setupSwitches(worldRoot, renderer, camera, controls) {
-  const switches = new Map(); // id -> { mesh, on }
-  const lamps = [];
+export function setupSwitches(
+  worldRoot,
+  renderer,
+  camera,
+  controls,
+  whatDidIHit
+) {
+  // id -> { mesh, on }
+  const switches = new Map();
+  // Raycast KUN mod disse meshes
+  const switchMeshes = [];
 
-  // collect switch meshes by name: switch1..switch4
+  // Find "switchN" i GLTF og brug N-1 som id (0-based)
   worldRoot.traverse((o) => {
-    if (o.isMesh && /^switch\d+$/i.test(o.name)) lamps.push(o);
-  });
-  lamps.sort((a, b) => a.name.localeCompare(b.name));
+    if (!o.isMesh) return;
+    const m = /^switch(\d+)$/i.exec(o.name || "");
+    if (!m) return;
 
-  // normalize each lamp (unique material + bigger hit)
-  lamps.forEach((lamp, idx) => {
-    lamp.userData.isSwitch = true;
-    lamp.userData.switchId = idx;
+    const num = parseInt(m[1], 10);
+    const id = num - 1;
 
-    // ensure emissive-capable material, and clone so each is independent
-    const toStd = (m) => {
-      if (!m || !("emissive" in m)) {
+    o.userData.isSwitch = true;
+    o.userData.switchId = id;
+
+    // sikr emissive og unikke materialer
+    const toStd = (mat) => {
+      if (!mat || !("emissive" in mat)) {
         return new THREE.MeshStandardMaterial({
-          color: m?.color ? m.color.clone() : new THREE.Color("#9a9a9a"),
+          color: mat?.color ? mat.color.clone() : new THREE.Color("#9a9a9a"),
           metalness: 0.1,
           roughness: 0.6,
         });
       }
-      return m.clone();
+      return mat.clone();
     };
-    lamp.material = Array.isArray(lamp.material)
-      ? lamp.material.map(toStd)
-      : toStd(lamp.material);
+    o.material = Array.isArray(o.material)
+      ? o.material.map(toStd)
+      : toStd(o.material);
 
-    // larger hit area
-    if (lamp.geometry) {
-      if (lamp.geometry.boundingSphere === null)
-        lamp.geometry.computeBoundingSphere();
-      if (lamp.geometry.boundingSphere)
-        lamp.geometry.boundingSphere.radius *= 1.7;
+    // større hit
+    if (o.geometry) {
+      if (o.geometry.boundingSphere === null)
+        o.geometry.computeBoundingSphere();
+      if (o.geometry.boundingSphere) o.geometry.boundingSphere.radius *= 1.7;
     }
 
-    setSwitchVisual(lamp, false);
-    switches.set(idx, { mesh: lamp, on: false });
+    setSwitchVisual(o, false);
+    switches.set(id, { mesh: o, on: false });
+    switchMeshes.push(o);
   });
 
-  // picking
+  console.log(
+    "[Switches] found ids:",
+    Array.from(switches.keys())
+      .sort((a, b) => a - b)
+      .map((i) => i + 1)
+      .join(", ") || "(none)"
+  );
+
+  // ---------- picking ----------
   const pickRay = new THREE.Raycaster();
   const pickNDC = new THREE.Vector2();
   let hovered = null;
@@ -67,12 +84,12 @@ export function setupSwitches(worldRoot, renderer, camera, controls) {
     pickRay.setFromCamera(pickNDC, camera);
     pickRay.near = 0.1;
     pickRay.far = INTERACT_MAX_DIST;
-    const hits = pickRay.intersectObject(worldRoot, true);
-    for (const h of hits) {
-      const o = h.object;
-      if (o?.userData?.isSwitch) return o;
-    }
-    return null;
+    const hits = pickRay.intersectObjects(switchMeshes, true); // kun switches
+    if (!hits.length) return null;
+
+    let node = hits[0].object;
+    while (node && !/^switch\d+$/i.test(node.name)) node = node.parent;
+    return node ?? null;
   }
 
   function applyHover(mesh) {
@@ -100,9 +117,7 @@ export function setupSwitches(worldRoot, renderer, camera, controls) {
   }
 
   function setSwitchVisual(mesh, on) {
-    // clear hover override first
-    clearHover(mesh);
-
+    clearHover(mesh); // fjern hover-override først
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const m of mats) {
       if (!("emissive" in m)) continue;
@@ -117,12 +132,33 @@ export function setupSwitches(worldRoot, renderer, camera, controls) {
     }
   }
 
-  function toggleSwitchById(id) {
-    const s = switches.get(id);
-    if (!s) return;
-    s.on = !s.on;
-    setSwitchVisual(s.mesh, s.on);
-  }
+  // API-objekt med callback
+  const api = {
+    switches,
+    onToggle: null, // <-- sæt denne udefra: (id, on) => {}
+    toggleSwitchById(id) {
+      id = Number(id);
+      const s = switches.get(id);
+      if (!s) {
+        console.warn("[Switches] toggle: unknown id", id);
+        return;
+      }
+      s.on = !s.on;
+      setSwitchVisual(s.mesh, s.on);
+
+      // notifícer resten af appen
+      api.onToggle?.(id, s.on);
+      // (valgfrit) DOM event til debugging/tools
+      window.dispatchEvent(
+        new CustomEvent("switch-toggled", { detail: { id, on: s.on } })
+      );
+    },
+    dispose() {
+      const canvas = renderer.domElement;
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mousedown", onDown);
+    },
+  };
 
   // hover + click
   const canvas = renderer.domElement;
@@ -144,12 +180,13 @@ export function setupSwitches(worldRoot, renderer, camera, controls) {
     aimNDC(e);
     const hit = pickSwitch();
     if (hit && hit.userData?.isSwitch) {
-      toggleSwitchById(hit.userData.switchId);
+      whatDidIHit?.(hit);
+      api.toggleSwitchById(hit.userData.switchId); // <-- bruger API-metoden (kan override’/kobles)
     }
   };
 
   canvas.addEventListener("mousemove", onMove);
   canvas.addEventListener("mousedown", onDown);
 
-  return { switches, toggleSwitchById };
+  return api;
 }

@@ -1,92 +1,66 @@
-html,
-body {
+/* =========================================================
+   Base
+========================================================= */
+html, body {
   margin: 0;
   height: 100%;
-  background: #000000;
+  background: #000;              /* hard black stage */
   color: #fff;
   overflow: hidden;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
-    sans-serif;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
 }
-button {
-  font: inherit;
-}
-.overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.overlay.show {
-  display: flex;
-}
-.modal {
-  background: rgba(18, 18, 18, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 18px 20px;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  text-align: center;
-}
-.btn {
-  padding: 10px 14px;
-  border: 0;
-  border-radius: 10px;
-  background: #4ade80;
-  color: #0a0a0a;
-  cursor: pointer;
-}
-canvas {
-  display: block;
-}
+button { font: inherit; }
+canvas { display: block; }
 
-/* ---------- Custom "alien" font ---------- */
-/* If your file lives at projectRoot/public-font/ThreeJs-Regular.ttf,
-   this URL is correct. If you move it to /public/fonts/, change to /fonts/ThreeJs-Regular.ttf */
+/* =========================================================
+   Custom "alien" font (keep both paths; whichever exists will load)
+========================================================= */
 @font-face {
   font-family: "ThreeJsAlien";
-  src: url("/font/ThreeJs-Regular.ttf") format("truetype");
+  src:
+    url("/public-font/ThreeJs-Regular.ttf") format("truetype"),
+    url("/font/ThreeJs-Regular.ttf") format("truetype");
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 
-/* ---------- UI layout ---------- */
+/* =========================================================
+   UI shell (overlays/cards/buttons/progress)
+========================================================= */
 #ui-root {
   position: fixed;
   inset: 0;
   pointer-events: none; /* children can re-enable */
   z-index: 1000;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
+/* each "screen" */
 .ui-overlay {
   position: absolute;
   inset: 0;
-  display: none;          /* toggled by showOnly */
+  display: none;          /* toggled by showOnly(name) */
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.78), rgba(0,0,0,.92));
+  background: transparent;   /* NO overlay wash */
   pointer-events: auto;
 }
+.ui-overlay.show { display: flex; }
 
+/* base card (transparent by default) */
 .ui-card {
   width: min(900px, 92vw);
-  background: rgba(20,20,22,.75);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 16px;
+  background: transparent;    /* NO panel fill */
+  border: 0;
+  border-radius: 8px;
   padding: 24px;
   color: #e5e7eb;
-  box-shadow: 0 20px 80px rgba(0,0,0,.45);
+  box-shadow: none;           /* glow handled in .term below */
 }
-
 .ui-card.small { width: min(520px, 92vw); }
 
 .ui-title {
-  text-align: center;
+  text-align: left;
   letter-spacing: .2em;
   font-size: clamp(18px, 2.6vw, 28px);
   margin: 0 0 16px;
@@ -94,31 +68,10 @@ canvas {
   text-transform: uppercase;
 }
 
-.ui-split {
-  display: grid;
-  grid-template-columns: 1fr 2px 1fr;
-  gap: 18px;
-  align-items: start;
-  min-height: 180px;
-}
-
-.ui-col { min-height: 120px; }
-
-.ui-col-left  { font-size: clamp(14px, 1.5vw, 16px); line-height: 2; }
-.ui-col-right { font-size: clamp(16px, 1.7vw, 18px); line-height: 1.5; }
-
-.ui-divider {
-  width: 2px;
-  background: linear-gradient(180deg, rgba(59,130,246,.0), rgba(59,130,246,.6), rgba(59,130,246,.0));
-  border-radius: 1px;
-}
-
-.ui-type { white-space: pre-wrap; }
-.ui-type-alien { font-family: "ThreeJsAlien", monospace; letter-spacing: .06em; }
-
+/* buttons */
 .ui-button {
-  margin: 18px auto 4px;
-  display: block;
+  margin: 18px 0 4px;
+  display: inline-block;
   background: #10b981;
   color: #0b1f17;
   border: none;
@@ -127,11 +80,13 @@ canvas {
   font-weight: 700;
   cursor: pointer;
   transition: transform .06s ease, filter .15s ease;
+  pointer-events: auto;
 }
 .ui-button:hover   { filter: brightness(1.05); transform: translateY(-1px); }
 .ui-button:active  { transform: translateY(0); }
 
-.ui-loading-title { text-align: center; margin-bottom: 12px; }
+/* loading bar */
+.ui-loading-title { text-align: left; margin-bottom: 12px; }
 .ui-progress {
   height: 8px;
   background: rgba(255,255,255,.1);
@@ -144,4 +99,219 @@ canvas {
   background: linear-gradient(90deg, #10b981, #34d399);
   transition: width .2s ease;
 }
+
 .ui-list { margin: 10px 0 16px; padding-left: 18px; }
+
+/* =========================================================
+   Controls diagram (WASD + mouse) — inherits theme colors
+========================================================= */
+.controls-visual{ display:flex; align-items:center; justify-content:center; gap:28px; margin:12px 0 6px; }
+.wasd{ width:min(240px,45%); height:auto; }
+.mouse{ width:min(160px,35%); height:auto; }
+.key-bg{ fill: transparent; stroke: currentColor; stroke-width: 2.5; }
+.key-label{
+  fill: currentColor;
+  font: 700 24px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  text-anchor: middle; dominant-baseline: middle;
+}
+.mouse-body path{ fill: transparent; stroke: currentColor; stroke-width: 2.5; }
+.mouse-split{ stroke: currentColor; stroke-width: 1.5; opacity:.6; }
+.mouse-wheel{ fill: currentColor; opacity:.9; }
+.mouse-label{
+  fill: currentColor;
+  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+@media (max-width:560px){ .controls-visual{ flex-direction:column; gap:18px; } }
+
+/* =========================================================
+   CRT THEME (base) — variables + NO vignette/scanlines
+========================================================= */
+:root{
+  --crt-fg:   #85ffbd;   /* main text */
+  --crt-hi:   #b9ffd7;   /* brighter for headers/buttons */
+  --crt-line: #20543b;   /* borders / grid */
+  --crt-bg:   #000000;   /* screen bg */
+
+  /* glow strength knobs */
+  --crt-bloom:    0.0;   /* base theme off */
+  --crt-bloom-hi: 0.0;
+}
+
+#ui-root.crt-theme {
+  color: var(--crt-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Kill scanlines/vignette entirely */
+#ui-root.crt-theme::before,
+#ui-root.crt-theme::after { content: none !important; }
+
+/* terminal-styled cards: transparent with border + glow only */
+.ui-card.term{
+  background: transparent;                 /* NO fill */
+  border: 2px solid var(--crt-line);       /* lines visible */
+  border-radius: 6px;
+  padding: 24px;
+  color: var(--crt-fg);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0) inset,
+    0 0 calc(26px * var(--crt-bloom)) rgba(255,255,255,.0); /* base theme zero */
+}
+
+/* header bar (no bar fill; just bottom line + text glow) */
+.ui-card.term[data-term-title]::before{
+  content: attr(data-term-title);
+  display: block;
+  margin: -24px -24px 16px;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--crt-line);
+  background: transparent;                 /* NO bar fill */
+  color: var(--crt-hi);
+  letter-spacing: .18em;
+  font-weight: 700;
+  text-shadow: 0 0 calc(8px * var(--crt-bloom-hi)) rgba(255,255,255,.25);
+}
+
+/* headings glow */
+.ui-card.term .ui-title,
+.ui-card.term h1,
+.ui-card.term h2{
+  color: var(--crt-hi);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+  text-shadow:
+    0 0 calc(10px * var(--crt-bloom)) rgba(255,255,255,.25);
+}
+
+/* progress styled as register bar */
+.ui-progress{
+  background: transparent;
+  border: 2px solid var(--crt-line);
+  border-radius: 4px;
+}
+.ui-progress-bar{
+  height: 100%;
+  width: 0%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--crt-hi) 0 12px,
+    rgba(255,255,255,.65) 12px 24px
+  );
+  box-shadow: 0 0 calc(12px * var(--crt-bloom)) rgba(255,255,255,.35);
+  transition: width .18s linear;
+}
+
+/* =========================================================
+   AMBER OVERRIDE (Fairlight-y) — pure black background
+========================================================= */
+#ui-root.crt-theme.crt-amber{
+  --crt-fg:       #ff9a1a;   /* main text */
+  --crt-hi:       #ff9a1a;   /* highlights/buttons */
+  --crt-line:     #ff9a1a;   /* borders/grids */
+  --crt-bg:       #000000;   /* hard black */
+  --crt-bloom:    2.00;      /* text/line glow */
+  --crt-bloom-hi: 1.60;
+  color: var(--crt-fg);
+}
+
+/* (still no vignette/scanlines in amber) */
+#ui-root.crt-theme.crt-amber::before,
+#ui-root.crt-theme.crt-amber::after { content: none !important; }
+
+/* Card border & glow in amber */
+#ui-root.crt-theme.crt-amber .ui-card.term{
+  border-color: var(--crt-line);
+  box-shadow:
+    0 0 0 1px rgba(255,165,70,.10) inset,
+    0 0 calc(26px * var(--crt-bloom)) rgba(255,150,40,.28),
+    0 0 calc(80px * var(--crt-bloom)) rgba(255,120,20,.12);
+}
+
+/* Header text glow in amber */
+#ui-root.crt-theme.crt-amber .ui-card.term[data-term-title]::before{
+  color: var(--crt-hi);
+  text-shadow:
+    0 0 calc(10px * var(--crt-bloom-hi)) rgba(255,180,90,.60),
+    0 0 calc(22px * var(--crt-bloom-hi)) rgba(255,140,40,.35);
+}
+
+/* Headline + typed lines glow (amber) */
+#ui-root.crt-theme.crt-amber .ui-card.term .ui-title,
+#ui-root.crt-theme.crt-amber .tw-en,
+#ui-root.crt-theme.crt-amber .tw-alien{
+  text-shadow:
+    0 0 calc(10px * var(--crt-bloom)) rgba(255,170,60,.45),
+    0 0 calc(22px * var(--crt-bloom)) rgba(255,130,30,.25);
+}
+
+/* Buttons in strong amber */
+#ui-root.crt-theme.crt-amber .ui-button{
+  background: var(--crt-hi);
+  border: 2px solid var(--crt-line);
+  color: #2a1906;
+  border-radius: 4px;
+  box-shadow:
+    0 0 calc(16px * var(--crt-bloom)) rgba(255,165,70,.50),
+    0 0 calc(36px * var(--crt-bloom)) rgba(255,130,30,.25);
+}
+#ui-root.crt-theme.crt-amber .ui-button:hover{
+  filter: brightness(1.08) drop-shadow(0 0 6px rgba(255,180,90,.65));
+}
+
+/* Controls SVG in amber line style */
+#ui-root.crt-theme.crt-amber .controls-visual .key .key-bg{
+  fill: transparent;
+  stroke: var(--crt-line);
+  stroke-width: 2;
+}
+#ui-root.crt-theme.crt-amber .controls-visual .key .key-label{
+  fill: var(--crt-hi);
+}
+#ui-root.crt-theme.crt-amber .controls-visual .mouse .mouse-body path{
+  fill: transparent;
+  stroke: var(--crt-line);
+  stroke-width: 2;
+}
+#ui-root.crt-theme.crt-amber .controls-visual .mouse .mouse-split,
+#ui-root.crt-theme.crt-amber .controls-visual .mouse .mouse-wheel{
+  stroke: var(--crt-line);
+  fill: var(--crt-line);
+}
+
+/* =========================================================
+   STACKED TYPEWRITER (English + Alien under)
+========================================================= */
+.tw-block{ display:flex; flex-direction:column; gap:8px; }
+.tw-line{ margin: 4px 0; }
+
+.tw-en{
+  font-size: clamp(16px, 1.6vw, 22px);
+  line-height: 1.35;
+  color: var(--crt-fg);
+}
+.tw-alien{
+  font-family: "ThreeJsAlien", monospace;
+  font-size: clamp(14px, 1.6vw, 22px);  /* bigger, closer to EN */
+  line-height: 1.15;
+  letter-spacing: .1em;
+  color: var(--crt-hi);
+  opacity: .98;
+  margin-top: 1px;                       /* tighter EN↔AL gap */
+}
+
+/* --- Strong UI text bloom (typed lines, headers) --- */
+.bloom-text {
+  /* base glow */
+  text-shadow:
+    0 0 8px  rgba(255,170,60,.55),
+    0 0 18px rgba(255,140,30,.35),
+    0 0 36px rgba(255,120,20,.22);
+  /* tiny extra ‘CRT’ punch */
+  filter: drop-shadow(0 0 4px rgba(255,160,40,.45));
+}
+
+/* Make the Resume overlay background fully black so it’s readable */
+.ui-overlay.ui-resume {
+  background: #000 !important;   /* overrides the radial gradient */
+}

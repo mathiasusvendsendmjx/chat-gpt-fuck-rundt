@@ -20,7 +20,7 @@ import {
 } from "./config.js";
 
 const ui = buildUI();
-ui.showOnly("start");
+ui.showOnly("title"); // Title screen first
 
 const canvas = renderer.domElement;
 if (!canvas.hasAttribute("tabindex")) canvas.setAttribute("tabindex", "-1");
@@ -124,29 +124,39 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
 }
 /* ---------------------------------- */
 
-// FLOW
-ui.btnStart.addEventListener("click", async () => {
-  console.log("[UI] Start clicked");
-  ui.showOnly("loading");
+// ====== NEW FLOW ======
 
-  // --- AUDIO (plays immediately) ---
-  const audio = createLayerMixer({
-    backgroundUrl: "/audio/background.wav",
-    layerUrls: [
-      "/audio/layer1.wav",
-      "/audio/layer2.wav",
-      "/audio/layer3.wav",
-      "/audio/layer4.wav",
-    ],
-    snap: 0.008,
-  });
+// Music starts on the TITLE "Start" button
+let audio; // keep reference globally
+ui.btnStartTitle.addEventListener("click", async () => {
   try {
+    audio = createLayerMixer({
+      backgroundUrl: "/audio/background.wav",
+      layerUrls: [
+        "/audio/layer1.wav",
+        "/audio/layer2.wav",
+        "/audio/layer3.wav",
+        "/audio/layer4.wav",
+      ],
+      snap: 0.008,
+    });
     await audio.init();
     await audio.context()?.resume?.();
-    console.log("[Audio] background should now be audible");
+    audio.fadeBackgroundTo?.(1, 1.2); // fade in bg music
+    console.log("[Audio] background playing");
   } catch (e) {
-    console.error("[Audio] init error:", e);
+    console.error("[Audio] init/resume failed:", e);
   }
+
+  // Show intro + typewriter
+  ui.showOnly("intro");
+  ui.playIntroTypewriter?.();
+});
+
+// INTRO → Continue → now load the world (moved here from the old Start)
+ui.btnIntroNext.addEventListener("click", async () => {
+  console.log("[UI] Intro Continue clicked");
+  ui.showOnly("loading");
 
   // --- WORLD ---
   const { worldRoot, navMesh } = await loadWorld({
@@ -213,7 +223,7 @@ ui.btnStart.addEventListener("click", async () => {
 
     // audio: latch the layer ON the first time this switch turns on
     if (on) {
-      audio.setLayerOn(id, true);
+      audio?.setLayerOn(id, true);
       console.log(`[Audio] latched layer${id + 1} ON`);
 
       // optional: bloom the per-switch crystal/rund when they first turn on
@@ -240,20 +250,20 @@ ui.btnStart.addEventListener("click", async () => {
   // Controls overlay → lock on click; ensure audio context active
   ui.showOnly("controls");
   ui.btnContinue.addEventListener(
-    "click",
+    "pointerdown",
     (e) => {
-      audio.context()?.resume?.();
+      audio?.context()?.resume?.();
       requestLock(e);
     },
     { once: true }
   );
-  ui.btnResume.addEventListener("click", () => {
-    audio.context()?.resume?.();
-    requestLock();
+  ui.btnResume.addEventListener("pointerdown", (e) => {
+    audio?.context()?.resume?.();
+    requestLock(e);
   });
-  ui.resume.addEventListener("click", (e) => {
+  ui.resume.addEventListener("pointerdown", (e) => {
     if (e.target === ui.resume) {
-      audio.context()?.resume?.();
+      audio?.context()?.resume?.();
       requestLock(e);
     }
   });
@@ -266,7 +276,7 @@ ui.btnStart.addEventListener("click", async () => {
     crystals.tick?.(dt);
     runds.tick?.(dt);
     finale.tick?.(dt);
-    bloom.render(); // <- render with selective bloom (or fallback)
+    bloom.render(); // render with selective bloom (or fallback)
     requestAnimationFrame(animate);
   }
   animate();

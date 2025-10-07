@@ -36,10 +36,9 @@ function setFromDegrees(yawDeg, pitchDeg) {
 // Controls / movement
 const { controls, update } = setupMovement(camera, renderer);
 
-// ===== Pointer lock ↔ UI wiring =====
+// Pointer lock ↔ UI
 controls.addEventListener("lock", () => {
   canvas.style.cursor = "none";
-  // overlays already hidden when we request lock, but ensure:
   ui.showOnly(null);
 });
 controls.addEventListener("unlock", () => {
@@ -51,22 +50,54 @@ document.addEventListener("pointerlockerror", () => {
   ui.showOnly("resume");
 });
 
-// Single-gesture resume: hide overlay, then next frame focus + lock
-function hideOverlayThenLock(ev) {
-  if (ev) {
-    ev.preventDefault();
-    ev.stopPropagation();
+// single-gesture helper for resume/continue
+function hideOverlayThenLock(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
   }
-  // 1) hide ONLY the resume overlay immediately so it can't block the click
-  ui.hideResume();
-  // 2) in the very next frame, focus canvas and lock (same user gesture)
+  ui.showOnly(null);
   requestAnimationFrame(() => {
     canvas.focus({ preventScroll: true });
     controls.lock();
   });
 }
 
-// ===== Flow =====
+/* ---------- DEBUG: force emissive ON by name to prove materials glow ---------- */
+function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
+  if (!window.worldRoot) return;
+  const want = new Set(objNames.map((n) => String(n).toLowerCase()));
+  window.worldRoot.traverse((o) => {
+    if (!o.isMesh) return;
+    const nm = (o.name || "").toLowerCase();
+    if (!want.has(nm)) return;
+
+    const makeStd = (m) => {
+      if (!m || !("emissive" in m)) {
+        return new THREE.MeshStandardMaterial({
+          color: m?.color ? m.color.clone() : new THREE.Color("#9a9a9a"),
+          metalness: 0.1,
+          roughness: 0.6,
+        });
+      }
+      return m.clone();
+    };
+    if (Array.isArray(o.material)) o.material = o.material.map(makeStd);
+    else o.material = makeStd(o.material);
+
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!("emissive" in m)) continue;
+      m.emissive = new THREE.Color(color);
+      m.emissiveIntensity = intensity;
+      m.needsUpdate = true;
+    }
+    console.log("Emissive forced ON:", o.name);
+  });
+}
+/* --------------------------------------------------------------------------- */
+
+// FLOW
 ui.btnStart.addEventListener("click", async () => {
   ui.showOnly("loading");
 
@@ -78,6 +109,7 @@ ui.btnStart.addEventListener("click", async () => {
   worldRoot.scale.set(5, 5, 5);
   worldRoot.rotation.y = Math.PI * 1.2;
   scene.add(worldRoot);
+  window.worldRoot = worldRoot; // for debug helper
 
   // Nav (invisible but raycastable)
   navMesh.traverse((o) => {
@@ -102,36 +134,28 @@ ui.btnStart.addEventListener("click", async () => {
   // Switches & crystals
   const switches = setupSwitches(worldRoot, renderer, camera, controls);
   const crystals = setupCrystals(worldRoot);
-const origToggle = switches.toggleSwitchById;
-switches.toggleSwitchById = (i) => {
-  origToggle(i);
-  const on = switches.switches.get(i)?.on;
-  crystals.setCrystalOn(i, !!on);
-};
+
+  // Bind: switch i toggles crystal i
+  const originalToggle = switches.toggleSwitchById;
+  switches.toggleSwitchById = (i) => {
+    originalToggle(i);
+    const on = !!switches.switches.get(i)?.on;
+    crystals.setCrystalOn(i, on);
+  };
 
   // Controls overlay → lock on pointerdown
   ui.showOnly("controls");
-  ui.btnContinue.addEventListener(
-    "pointerdown",
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      ui.showOnly(null);
-      requestAnimationFrame(() => {
-        canvas.focus({ preventScroll: true });
-        controls.lock();
-      });
-    },
-    { once: true }
-  );
+  ui.btnContinue.addEventListener("pointerdown", hideOverlayThenLock, {
+    once: true,
+  });
 
-  // Resume overlay: button OR backdrop
+  // Resume overlay: button OR backdrop click
   ui.btnResume.addEventListener("pointerdown", hideOverlayThenLock);
   ui.resume.addEventListener("pointerdown", (e) => {
     if (e.target === ui.resume) hideOverlayThenLock(e);
   });
 
-  // Extra fallback: click canvas to lock when overlays are hidden
+  // Extra: clicking the canvas relocks when overlays hidden
   canvas.addEventListener("pointerdown", () => {
     if (!controls.isLocked) controls.lock();
   });

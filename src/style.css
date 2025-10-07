@@ -41,3 +41,107 @@ button {
 canvas {
   display: block;
 }
+
+/* ---------- Custom "alien" font ---------- */
+/* If your file lives at projectRoot/public-font/ThreeJs-Regular.ttf,
+   this URL is correct. If you move it to /public/fonts/, change to /fonts/ThreeJs-Regular.ttf */
+@font-face {
+  font-family: "ThreeJsAlien";
+  src: url("/font/ThreeJs-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- UI layout ---------- */
+#ui-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* children can re-enable */
+  z-index: 1000;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.ui-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;          /* toggled by showOnly */
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.78), rgba(0,0,0,.92));
+  pointer-events: auto;
+}
+
+.ui-card {
+  width: min(900px, 92vw);
+  background: rgba(20,20,22,.75);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  padding: 24px;
+  color: #e5e7eb;
+  box-shadow: 0 20px 80px rgba(0,0,0,.45);
+}
+
+.ui-card.small { width: min(520px, 92vw); }
+
+.ui-title {
+  text-align: center;
+  letter-spacing: .2em;
+  font-size: clamp(18px, 2.6vw, 28px);
+  margin: 0 0 16px;
+  color: #a7f3d0;
+  text-transform: uppercase;
+}
+
+.ui-split {
+  display: grid;
+  grid-template-columns: 1fr 2px 1fr;
+  gap: 18px;
+  align-items: start;
+  min-height: 180px;
+}
+
+.ui-col { min-height: 120px; }
+
+.ui-col-left  { font-size: clamp(14px, 1.5vw, 16px); line-height: 2; }
+.ui-col-right { font-size: clamp(16px, 1.7vw, 18px); line-height: 1.5; }
+
+.ui-divider {
+  width: 2px;
+  background: linear-gradient(180deg, rgba(59,130,246,.0), rgba(59,130,246,.6), rgba(59,130,246,.0));
+  border-radius: 1px;
+}
+
+.ui-type { white-space: pre-wrap; }
+.ui-type-alien { font-family: "ThreeJsAlien", monospace; letter-spacing: .06em; }
+
+.ui-button {
+  margin: 18px auto 4px;
+  display: block;
+  background: #10b981;
+  color: #0b1f17;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .06s ease, filter .15s ease;
+}
+.ui-button:hover   { filter: brightness(1.05); transform: translateY(-1px); }
+.ui-button:active  { transform: translateY(0); }
+
+.ui-loading-title { text-align: center; margin-bottom: 12px; }
+.ui-progress {
+  height: 8px;
+  background: rgba(255,255,255,.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ui-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width .2s ease;
+}
+.ui-list { margin: 10px 0 16px; padding-left: 18px; }

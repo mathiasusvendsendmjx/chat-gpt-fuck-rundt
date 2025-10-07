@@ -11,6 +11,7 @@ import { setupCrystals } from "./crystals.js";
 import { setupRunds } from "./runds.js";
 import { createLayerMixer } from "./audio_layers.js";
 import { setupFinale } from "./finale.js";
+import { setupBloom } from "./bloom.js";
 import {
   START_YAW_DEG,
   START_PITCH_DEG,
@@ -39,37 +40,28 @@ function setFromDegrees(yawDeg, pitchDeg) {
 // Controls / movement
 const { controls, update } = setupMovement(camera, renderer);
 
-// ---------- FLASHLIGHT (SpotLight on a 45°-down rig) ----------
-scene.add(camera); // ensure camera is in the scene graph
-
-// pivot that pitches the beam (set to 0 to follow camera exactly)
+// ---------- FLASHLIGHT ----------
+scene.add(camera);
 const flashRig = new THREE.Object3D();
-flashRig.rotation.x = 0; // -Math.PI / 4 for 45° down
+flashRig.rotation.x = 0;
 camera.add(flashRig);
-
-// spotlight (tweak to taste)
 const flashlight = new THREE.SpotLight(
-  0xffffff, // color
-  50, // intensity
-  200, // distance
-  THREE.MathUtils.degToRad(60), // cone angle
-  0.9, // penumbra
-  0.8 // decay
+  0xffffff,
+  50,
+  200,
+  THREE.MathUtils.degToRad(60),
+  0.9,
+  0.8
 );
-// renderer.shadowMap.enabled = true;
-// flashlight.castShadow = true;
-
 flashRig.add(flashlight);
 flashlight.position.set(0, 0, 0);
-
 const flashTarget = new THREE.Object3D();
 flashTarget.position.set(0, 0, -1);
 flashRig.add(flashTarget);
 flashlight.target = flashTarget;
 
-// ---------- Pointer lock ↔ UI (gated, no rAF) ----------
+// ---------- Pointer lock ↔ UI ----------
 let wantingLock = false;
-
 controls.addEventListener("lock", () => {
   wantingLock = false;
   canvas.style.cursor = "none";
@@ -102,7 +94,7 @@ function requestLock(e) {
   }
 }
 
-/* ---------- DEBUG helper (unchanged) ---------- */
+/* ---------- DEBUG helper ---------- */
 function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
   if (!window.worldRoot) return;
   const want = new Set(objNames.map((n) => String(n).toLowerCase()));
@@ -110,16 +102,14 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
     if (!o.isMesh) return;
     const nm = (o.name || "").toLowerCase();
     if (!want.has(nm)) return;
-    const makeStd = (m) => {
-      if (!m || !("emissive" in m)) {
-        return new THREE.MeshStandardMaterial({
-          color: m?.color ? m.color.clone() : new THREE.Color("#9a9a9a"),
-          metalness: 0.1,
-          roughness: 0.6,
-        });
-      }
-      return m.clone();
-    };
+    const makeStd = (m) =>
+      !m || !("emissive" in m)
+        ? new THREE.MeshStandardMaterial({
+            color: m?.color ? m.color.clone() : new THREE.Color("#9a9a9a"),
+            metalness: 0.1,
+            roughness: 0.6,
+          })
+        : m.clone();
     if (Array.isArray(o.material)) o.material = o.material.map(makeStd);
     else o.material = makeStd(o.material);
     const mats = Array.isArray(o.material) ? o.material : [o.material];
@@ -132,14 +122,14 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
     console.log("Emissive forced ON:", o.name);
   });
 }
-/* ---------------------------------------------- */
+/* ---------------------------------- */
 
 // FLOW
 ui.btnStart.addEventListener("click", async () => {
-  console.log("[UI] Start clicked"); // << requested console.log
+  console.log("[UI] Start clicked");
   ui.showOnly("loading");
 
-  // --- AUDIO: init inside this user gesture so it can play immediately ---
+  // --- AUDIO (plays immediately) ---
   const audio = createLayerMixer({
     backgroundUrl: "/audio/background.wav",
     layerUrls: [
@@ -150,21 +140,19 @@ ui.btnStart.addEventListener("click", async () => {
     ],
     snap: 0.008,
   });
-
   try {
-    await audio.init(); // background unmutes here
+    await audio.init();
     await audio.context()?.resume?.();
     console.log("[Audio] background should now be audible");
   } catch (e) {
     console.error("[Audio] init error:", e);
   }
 
-  // --- WORLD: load as usual (drives your loading UI) ---
+  // --- WORLD ---
   const { worldRoot, navMesh } = await loadWorld({
     onProgress: (p) => (ui.bar.style.width = p + "%"),
   });
 
-  // World (unchanged)
   worldRoot.scale.set(5, 5, 5);
   worldRoot.rotation.y = Math.PI * 1.2;
   scene.add(worldRoot);
@@ -182,39 +170,66 @@ ui.btnStart.addEventListener("click", async () => {
   navMesh.updateMatrixWorld(true);
 
   const hitXZ = makeHitXZ(navMesh);
-
-  // Center camera on nav
   const box = new THREE.Box3().setFromObject(navMesh);
   const c = box.getCenter(new THREE.Vector3());
   const h = hitXZ(c.x, c.z);
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
-  // Switches & visuals
+  // --- BLOOM (safe, with fallback) ---
+  let bloom;
+  try {
+    console.log("[Bloom] setting up…");
+    bloom = setupBloom(renderer, scene, camera, {
+      threshold: 0.1,
+      strength: 1,
+      radius: 1,
+    });
+    console.log("[Bloom] ready");
+  } catch (err) {
+    console.error("[Bloom] setup failed, using plain render:", err);
+    bloom = { render: () => renderer.render(scene, camera) };
+  }
+
+  // Switches & visuals (bloom passed into switches + finale)
   const switches = setupSwitches(
     worldRoot,
     renderer,
     camera,
     controls,
-    whatDidIHit
+    whatDidIHit,
+    bloom
   );
   const crystals = setupCrystals(worldRoot);
   const runds = setupRunds(worldRoot);
-  const finale = setupFinale(worldRoot); // <— NEW
+  const finale = setupFinale(worldRoot, bloom);
 
-  // LAYER BINDING: latch-on behavior
-  // When a switch turns ON => unmute its corresponding layer (index = id)
-  // If it turns OFF later, we IGNORE (layer stays unmuted).
+  // LAYER BINDING: latch-on layers when a switch turns ON
   switches.onToggle = (id, on) => {
     console.log("[Switch] toggled", { id, on });
-    crystals.setCrystalOn(id, on); // visuals follow your toggle
+
+    // visuals
+    crystals.setCrystalOn(id, on);
     runds.setRundOn(id, on);
 
+    // audio: latch the layer ON the first time this switch turns on
     if (on) {
-      audio.setLayerOn(id, true); // latch: once ON it stays unmuted
+      audio.setLayerOn(id, true);
       console.log(`[Audio] latched layer${id + 1} ON`);
+
+      // optional: bloom the per-switch crystal/rund when they first turn on
+      const cMesh = crystals.crystals?.get(id)?.mesh;
+      const rMesh = runds.runds?.get(id)?.mesh;
+      if (cMesh) {
+        bloom.setBoost?.(cMesh, { color: "#4ade80", intensity: 2 });
+        bloom.mark?.(cMesh, true);
+      }
+      if (rMesh) {
+        bloom.setBoost?.(rMesh, { color: "#a855f7", intensity: 2 });
+        bloom.mark?.(rMesh, true);
+      }
     }
 
-    // If ALL 4 switches are ON → trigger finale once
+    // Finale when ALL 4 switches are ON
     const allOn = Array.from(switches.switches.values()).every((s) => s.on);
     if (allOn) {
       console.log("[Finale] all switches ON → arm finale");
@@ -232,7 +247,6 @@ ui.btnStart.addEventListener("click", async () => {
     },
     { once: true }
   );
-
   ui.btnResume.addEventListener("click", () => {
     audio.context()?.resume?.();
     requestLock();
@@ -252,7 +266,7 @@ ui.btnStart.addEventListener("click", async () => {
     crystals.tick?.(dt);
     runds.tick?.(dt);
     finale.tick?.(dt);
-    renderer.render(scene, camera);
+    bloom.render(); // <- render with selective bloom (or fallback)
     requestAnimationFrame(animate);
   }
   animate();

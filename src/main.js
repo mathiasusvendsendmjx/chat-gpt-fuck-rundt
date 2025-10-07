@@ -132,7 +132,13 @@ ui.btnStart.addEventListener("click", async () => {
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
   // Switches & crystals
-  const switches = setupSwitches(worldRoot, renderer, camera, controls);
+  const switches = setupSwitches(
+    worldRoot,
+    renderer,
+    camera,
+    controls,
+    whatDidIHit
+  );
   const crystals = setupCrystals(worldRoot);
 
   // Bind: switch i toggles crystal i

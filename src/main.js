@@ -9,8 +9,8 @@ import { makeHitXZ } from "./nav.js";
 import { setupSwitches } from "./switches.js";
 import { setupCrystals } from "./crystals.js";
 import { setupRunds } from "./runds.js";
-import { createAudioMixer } from "./audio.js";
-
+import { createLayerMixer } from "./audio_layers.js";
+import { setupFinale } from "./finale.js";
 import {
   START_YAW_DEG,
   START_PITCH_DEG,
@@ -51,7 +51,7 @@ camera.add(flashRig);
 const flashlight = new THREE.SpotLight(
   0xffffff, // color
   50, // intensity
-  400, // distance
+  200, // distance
   THREE.MathUtils.degToRad(60), // cone angle
   0.9, // penumbra
   0.8 // decay
@@ -136,35 +136,35 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
 
 // FLOW
 ui.btnStart.addEventListener("click", async () => {
+  console.log("[UI] Start clicked"); // << requested console.log
   ui.showOnly("loading");
 
   // --- AUDIO: init inside this user gesture so it can play immediately ---
-  const audio = createAudioMixer({
-    urls: [
-      "/audio/track1.wav",
-      "/audio/track2.wav",
-      "/audio/track3.wav",
-      "/audio/track4.wav",
-      "/audio/track5.wav",
+  const audio = createLayerMixer({
+    backgroundUrl: "/audio/background.wav",
+    layerUrls: [
+      "/audio/layer1.wav",
+      "/audio/layer2.wav",
+      "/audio/layer3.wav",
+      "/audio/layer4.wav",
     ],
-    fade: 0, // instant switches
-    snap: 0.008, // tiny ramp to avoid clicks
-    initialLevel: 1, // Track 1 on
+    snap: 0.008,
   });
 
   try {
-    await audio.init(); // ← guarantees track 1 starts now
-    audio.context()?.resume?.(); // just in case
-  } catch (err) {
-    console.error("[Audio] init error:", err);
+    await audio.init(); // background unmutes here
+    await audio.context()?.resume?.();
+    console.log("[Audio] background should now be audible");
+  } catch (e) {
+    console.error("[Audio] init error:", e);
   }
 
-  // --- WORLD: load as you already do ---
+  // --- WORLD: load as usual (drives your loading UI) ---
   const { worldRoot, navMesh } = await loadWorld({
     onProgress: (p) => (ui.bar.style.width = p + "%"),
   });
 
-  // World setup (unchanged)
+  // World (unchanged)
   worldRoot.scale.set(5, 5, 5);
   worldRoot.rotation.y = Math.PI * 1.2;
   scene.add(worldRoot);
@@ -189,7 +189,7 @@ ui.btnStart.addEventListener("click", async () => {
   const h = hitXZ(c.x, c.z);
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
-  // Interactions/visuals
+  // Switches & visuals
   const switches = setupSwitches(
     worldRoot,
     renderer,
@@ -199,20 +199,27 @@ ui.btnStart.addEventListener("click", async () => {
   );
   const crystals = setupCrystals(worldRoot);
   const runds = setupRunds(worldRoot);
+  const finale = setupFinale(worldRoot); // <— NEW
 
-  // MUSIC: level = 1 + number of ON switches
-  function updateMusicLevel() {
-    const onCount = Array.from(switches.switches.values()).reduce(
-      (n, s) => n + (s.on ? 1 : 0),
-      0
-    );
-    audio.setLevel(1 + onCount);
-  }
-
+  // LAYER BINDING: latch-on behavior
+  // When a switch turns ON => unmute its corresponding layer (index = id)
+  // If it turns OFF later, we IGNORE (layer stays unmuted).
   switches.onToggle = (id, on) => {
-    crystals.setCrystalOn(id, on);
+    console.log("[Switch] toggled", { id, on });
+    crystals.setCrystalOn(id, on); // visuals follow your toggle
     runds.setRundOn(id, on);
-    updateMusicLevel();
+
+    if (on) {
+      audio.setLayerOn(id, true); // latch: once ON it stays unmuted
+      console.log(`[Audio] latched layer${id + 1} ON`);
+    }
+
+    // If ALL 4 switches are ON → trigger finale once
+    const allOn = Array.from(switches.switches.values()).every((s) => s.on);
+    if (allOn) {
+      console.log("[Finale] all switches ON → arm finale");
+      finale.arm();
+    }
   };
 
   // Controls overlay → lock on click; ensure audio context active
@@ -244,6 +251,7 @@ ui.btnStart.addEventListener("click", async () => {
     update(dt, hitXZ, EYE_HEIGHT);
     crystals.tick?.(dt);
     runds.tick?.(dt);
+    finale.tick?.(dt);
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }

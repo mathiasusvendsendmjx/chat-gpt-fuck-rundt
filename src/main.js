@@ -21,20 +21,18 @@ import {
 } from "./config.js";
 
 /* =========================================================
-   1) BLOOM: one knob per TYPE (shared across all meshes in that type)
+   1) BLOOM: one knob per TYPE
 ========================================================= */
 const BLOOM_POST = { threshold: 0.12, strength: 1.35, radius: 0.3 };
 
 const BLOOM_TYPES = {
   kant: { color: "#FFD45A", intensity: 0.2, startOn: true, neutralize: true },
-
   around: {
     color: "#FFD45A",
     intensity: 0.2,
     startOn: false,
     neutralize: true,
   },
-
   crystal: {
     color: "#4ADE80",
     intensity: 0.8,
@@ -42,21 +40,31 @@ const BLOOM_TYPES = {
     neutralize: true,
   },
   rund: { color: "#A855F7", intensity: 0.8, startOn: false, neutralize: true },
-
   switch: {
     color: "#60A5FA",
     intensity: 0.4,
     startOn: false,
     neutralize: true,
   },
-
   finale: {
     color: "#FFE8A3",
     intensity: 0.4,
     startOn: false,
     neutralize: true,
   },
+  roots: { color: "#FFD45A", intensity: 0.2, startOn: false, neutralize: true },
+  bundkort: {
+    color: "#4ADE80",
+    intensity: 0.3,
+    startOn: false,
+    neutralize: true,
+  },
+  top: { color: "#4ADE80", intensity: 0.4, startOn: false, neutralize: true },
+  bund: { color: "#4ADE80", intensity: 0.4, startOn: false, neutralize: true },
 };
+
+const ROT_TOP_RAD = (45 * Math.PI) / 180; // left  (CCW)
+const ROT_BUND_RAD = (45 * Math.PI) / 180; // right (CW)
 
 const TYPE_PATTERNS = [
   { type: "kant", test: (n) => /^kant(out)?\b/.test(n) },
@@ -65,11 +73,22 @@ const TYPE_PATTERNS = [
   { type: "rund", test: (n) => /^rund\d+\b/.test(n) },
   { type: "switch", test: (n) => /^switch\d+\b/.test(n) },
   { type: "finale", test: (n) => /^finale\b/.test(n) },
+  { type: "roots", test: (n) => /^roots\b/.test(n) },
+  { type: "bundkort", test: (n) => /^bundkort\b/.test(n) },
+  { type: "top", test: (n) => /^top\d+\b/.test(n) },
+  { type: "bund", test: (n) => /^bund\d+\b/.test(n) },
 ];
 
 function routeType(name) {
   const n = (name || "").toLowerCase();
   for (const r of TYPE_PATTERNS) if (r.test(n)) return r.type;
+  return null;
+}
+function routeTypeForObject(obj) {
+  for (let p = obj; p; p = p.parent) {
+    const t = routeType(p.name);
+    if (t) return t;
+  }
   return null;
 }
 
@@ -78,6 +97,7 @@ function routeType(name) {
 ========================================================= */
 const ui = buildUI();
 ui.showOnly("title");
+ui.playTitleTypewriter?.();
 setScanlines(true);
 function setScanlines(on) {
   ui.root.classList.toggle("noscan", !on);
@@ -99,7 +119,6 @@ function setFromDegrees(yawDeg, pitchDeg) {
     "YXZ"
   );
 }
-
 const { controls, update } = setupMovement(camera, renderer);
 
 scene.add(camera);
@@ -108,7 +127,7 @@ camera.add(flashRig);
 const flashlight = new THREE.SpotLight(
   0xffffff,
   70,
-  350,
+  500,
   THREE.MathUtils.degToRad(65),
   0.95,
   1.0
@@ -125,10 +144,39 @@ camera.add(shoulder);
 shoulder.position.set(0.15, -0.05, -0.25);
 renderer.toneMappingExposure = 1.15;
 
+/* ------------------- Gentle global lights + corner fills ------------------- */
+let _cornerLights = null;
 function setupCinematicLighting() {
-  scene.add(new THREE.HemisphereLight(0x1ce0a1, 0x060907, 0.35));
-  scene.add(new THREE.AmbientLight(0x0e1512, 0.18));
-  scene.fog = new THREE.FogExp2(0x000000, 0.002);
+  // existing gentle fill
+  const hemi = new THREE.HemisphereLight(0x1ce0a1, 0x060907, 0.35);
+  scene.add(hemi);
+
+  const amb = new THREE.AmbientLight(0x0e1512, 0.18);
+  scene.add(amb);
+
+  // --- NEW: four very-dim corner directionals ---
+  if (!_cornerLights) {
+    _cornerLights = [];
+    const corners = [
+      new THREE.Vector3( 220, 140,  220),
+      new THREE.Vector3(-220, 140,  220),
+      new THREE.Vector3( 220, 140, -220),
+      new THREE.Vector3(-220, 140, -220),
+    ];
+    // two slightly warm, two slightly cool, all VERY dim
+    const colors = [0xffe4c4, 0xcfe8ff, 0xffe4c4, 0xcfe8ff];
+    const intensity = 0.08; // super subtle
+
+    for (let i = 0; i < corners.length; i++) {
+      const dl = new THREE.DirectionalLight(colors[i], intensity);
+      dl.position.copy(corners[i]);
+      dl.target.position.set(0, 0, 0);        // aim towards center
+      dl.castShadow = false;
+      scene.add(dl);
+      scene.add(dl.target);
+      _cornerLights.push(dl);
+    }
+  }
 }
 
 /* =========================================================
@@ -143,15 +191,13 @@ function flattenEmissive(mesh) {
     m.needsUpdate = true;
   }
 }
-
-// returns { kant:[], around:[], crystal:[], rund:[], switch:[], finale:[] }
 function applyTypePresets(root, bloom) {
   const byType = Object.fromEntries(
     Object.keys(BLOOM_TYPES).map((k) => [k, []])
   );
   root.traverse((o) => {
     if (!o.isMesh) return;
-    const t = routeType(o.name);
+    const t = routeTypeForObject(o);
     if (!t) return;
     const preset = BLOOM_TYPES[t];
     if (!preset) return;
@@ -163,13 +209,40 @@ function applyTypePresets(root, bloom) {
   return byType;
 }
 
-// find one mesh by exact name
+// helpers for top/bund as GROUPS or MESHES
+function collectByIndex(root, prefix) {
+  // returns array where idx 0..3 = Object3D named `${prefix}${idx+1}`
+  const out = [];
+  const rx = new RegExp(`^${prefix}(\\d+)\\b`, "i");
+  root.traverse((o) => {
+    const m = (o.name || "").match(rx);
+    if (m) {
+      const idx = Math.max(0, parseInt(m[1], 10) - 1);
+      out[idx] = o;
+    }
+  });
+  return out;
+}
+function forEachMesh(node, fn) {
+  if (!node) return;
+  node.traverse((o) => {
+    if (o.isMesh) fn(o);
+  });
+}
+function applyPresetToGroup(node, typeKey, on, bloom) {
+  const preset = BLOOM_TYPES[typeKey];
+  if (!preset || !node) return;
+  forEachMesh(node, (m) => {
+    if (preset.neutralize) flattenEmissive(m);
+    bloom.setBoost?.(m, preset);
+    bloom.mark?.(m, !!on);
+  });
+}
 function getMeshByName(root, name) {
   const want = String(name).toLowerCase();
   let out = null;
   root.traverse((o) => {
-    if (out || !o.isMesh) return;
-    if ((o.name || "").toLowerCase() === want) out = o;
+    if (!out && o.isMesh && (o.name || "").toLowerCase() === want) out = o;
   });
   return out;
 }
@@ -219,12 +292,12 @@ let audio;
 ui.btnStartTitle.addEventListener("click", async () => {
   try {
     audio = createLayerMixer({
-      backgroundUrl: "/audio/background.wav",
+      backgroundUrl: "/audio/background.mp3",
       layerUrls: [
-        "/audio/layer1.wav",
-        "/audio/layer2.wav",
-        "/audio/layer3.wav",
-        "/audio/layer4.wav",
+        "/audio/layer1.mp3",
+        "/audio/layer2.mp3",
+        "/audio/layer3.mp3",
+        "/audio/layer4.mp3",
       ],
       snap: 0.008,
     });
@@ -293,6 +366,26 @@ ui.btnIntroNext.addEventListener("click", async () => {
   // Apply shared type presets and keep references
   const meshesByType = applyTypePresets(worldRoot, bloom);
 
+  /* ========= TOP/BUND wiring (works for groups or meshes named top1..4/bund1..4) ========= */
+  const topRootByIndex = collectByIndex(worldRoot, "top");
+  const bundRootByIndex = collectByIndex(worldRoot, "bund");
+
+  // spin flags
+  const spinTop = [false, false, false, false];
+  const spinBund = [false, false, false, false];
+
+  // neutralize + pre-boost children so the type knob is authoritative
+  for (const root of topRootByIndex)
+    forEachMesh(root, (m) => {
+      if (BLOOM_TYPES.top.neutralize) flattenEmissive(m);
+      bloom.setBoost?.(m, BLOOM_TYPES.top);
+    });
+  for (const root of bundRootByIndex)
+    forEachMesh(root, (m) => {
+      if (BLOOM_TYPES.bund.neutralize) flattenEmissive(m);
+      bloom.setBoost?.(m, BLOOM_TYPES.bund);
+    });
+
   // Around rings (also neutralized)
   const around = setupAround(worldRoot, bloom, {
     color: BLOOM_TYPES.around.color,
@@ -314,7 +407,7 @@ ui.btnIntroNext.addEventListener("click", async () => {
   const runds = setupRunds(worldRoot);
   const finale = setupFinale(worldRoot, bloom);
 
-  // Helper: re-scan for finale meshes that may be spawned later
+  // Finale rescanner
   function rescanFinaleMeshes() {
     worldRoot.traverse((o) => {
       if (!o.isMesh) return;
@@ -329,13 +422,13 @@ ui.btnIntroNext.addEventListener("click", async () => {
     });
   }
 
-  // Switch → visuals/audio/bloom (uses the TYPE knobs)
+  // Switch → visuals/audio/bloom
   switches.onToggle = (id, on) => {
     crystals.setCrystalOn(id, on);
     runds.setRundOn(id, on);
     around.setAroundOn?.(id, on);
 
-    // Find the physical switch mesh by name (switch1..4)
+    // switch lamp itself
     const swName = `switch${id + 1}`;
     const swMesh =
       getMeshByName(worldRoot, swName) ||
@@ -346,6 +439,18 @@ ui.btnIntroNext.addEventListener("click", async () => {
       if (BLOOM_TYPES.switch.neutralize) flattenEmissive(swMesh);
       bloom.setBoost?.(swMesh, BLOOM_TYPES.switch);
       bloom.mark?.(swMesh, on);
+    }
+
+    // 🔹 TOP/BUND follow the same id
+    const tRoot = topRootByIndex[id];
+    const bRoot = bundRootByIndex[id];
+    if (tRoot) {
+      applyPresetToGroup(tRoot, "top", on, bloom);
+      spinTop[id] = !!on;
+    }
+    if (bRoot) {
+      applyPresetToGroup(bRoot, "bund", on, bloom);
+      spinBund[id] = !!on;
     }
 
     if (on) {
@@ -368,15 +473,22 @@ ui.btnIntroNext.addEventListener("click", async () => {
     if (allOn) {
       finale.arm?.();
 
-      // Make all finale* meshes follow the finale knob
       rescanFinaleMeshes();
       for (const m of meshesByType.finale) {
         if (BLOOM_TYPES.finale.neutralize) flattenEmissive(m);
         bloom.setBoost?.(m, BLOOM_TYPES.finale);
         bloom.mark?.(m, true);
       }
-
-      // Optional: reassert kant brightness at the end
+      for (const m of meshesByType.roots) {
+        if (BLOOM_TYPES.roots.neutralize) flattenEmissive(m);
+        bloom.setBoost?.(m, BLOOM_TYPES.roots);
+        bloom.mark?.(m, true);
+      }
+      for (const m of meshesByType.bundkort) {
+        if (BLOOM_TYPES.bundkort.neutralize) flattenEmissive(m);
+        bloom.setBoost?.(m, BLOOM_TYPES.bundkort);
+        bloom.mark?.(m, true);
+      }
       for (const m of meshesByType.kant) {
         bloom.setBoost?.(m, BLOOM_TYPES.kant);
         bloom.mark?.(m, true);
@@ -388,15 +500,14 @@ ui.btnIntroNext.addEventListener("click", async () => {
   canvas.style.visibility = "hidden";
   setScanlines(true);
 
-  // Keep switch/finale under YOUR control even if their files tweak emissive
   function reassertTypeControl() {
-    for (const m of meshesByType.switch) {
-      if (BLOOM_TYPES.switch.neutralize) flattenEmissive(m);
-      bloom.setBoost?.(m, BLOOM_TYPES.switch);
-    }
-    for (const m of meshesByType.finale) {
-      if (BLOOM_TYPES.finale.neutralize) flattenEmissive(m);
-      bloom.setBoost?.(m, BLOOM_TYPES.finale);
+    for (const k of ["switch", "finale", "roots", "bundkort"]) {
+      const preset = BLOOM_TYPES[k];
+      if (!preset) continue;
+      for (const m of meshesByType[k]) {
+        if (preset.neutralize) flattenEmissive(m);
+        bloom.setBoost?.(m, preset);
+      }
     }
   }
 
@@ -409,11 +520,16 @@ ui.btnIntroNext.addEventListener("click", async () => {
     around.tick?.(dt);
     finale.tick?.(dt);
 
-    // If finale spawns new stuff, capture it
     rescanFinaleMeshes();
-
-    // Reassert control so per-file emissive can't override your knob
     reassertTypeControl();
+
+    // spin whole groups/meshes
+    for (let i = 0; i < 4; i++) {
+      const t = topRootByIndex[i];
+      const b = bundRootByIndex[i];
+      if (t && spinTop[i]) t.rotation.y += ROT_TOP_RAD * dt; // left
+      if (b && spinBund[i]) b.rotation.y -= ROT_BUND_RAD * dt; // right
+    }
 
     const wasVisible = navMesh.visible;
     navMesh.visible = false;

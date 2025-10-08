@@ -1,10 +1,11 @@
 // src/switches.js
 import * as THREE from "three";
 
-const INTERACT_MAX_DIST = 100;
-const HOVER_BLOOM_COLOR = "#f59e0b"; // orange
-const ON_BLOOM_COLOR = "#4ade80"; // green
-const BLOOM_INTENSITY = 1.5;
+const INTERACT_MAX_DIST = 120; // how far you can click a switch
+const HOVER_BLOOM_COLOR = "#f59e0b"; // orange when hovered (and OFF)
+const ON_BLOOM_COLOR = "#4ade80"; // green when ON
+const BLOOM_INTENSITY = 1.5; // hover/ON hint brightness
+const HITPAD_SCALE = 2.25; // enlarge hit radius
 
 export function setupSwitches(
   worldRoot,
@@ -12,36 +13,36 @@ export function setupSwitches(
   camera,
   controls,
   whatDidIHit,
-  bloom // optional
+  bloom
 ) {
   const switchesMap = new Map(); // id -> { mesh, on }
   const lamps = [];
 
-  // gather: switch1..switch4
+  // collect switch1..switch4
   worldRoot.traverse((o) => {
     if (o.isMesh && /^switch\d+$/i.test(o.name)) lamps.push(o);
   });
   lamps.sort((a, b) => a.name.localeCompare(b.name));
 
-  // ----- picking boilerplate
-  const pickRay = new THREE.Raycaster();
-  const pickNDC = new THREE.Vector2();
+  // ----- picking
+  const ray = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
   let hovered = null;
 
   function toNDC(e) {
     const rect = renderer.domElement.getBoundingClientRect();
-    pickNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    pickNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   }
   function aimNDC(e) {
-    if (controls.isLocked) pickNDC.set(0, 0);
+    if (controls.isLocked) ndc.set(0, 0);
     else toNDC(e);
   }
   function pickSwitch() {
-    pickRay.setFromCamera(pickNDC, camera);
-    pickRay.near = 0.1;
-    pickRay.far = INTERACT_MAX_DIST;
-    const hits = pickRay.intersectObject(worldRoot, true);
+    ray.setFromCamera(ndc, camera);
+    ray.near = 0.1;
+    ray.far = INTERACT_MAX_DIST;
+    const hits = ray.intersectObject(worldRoot, true);
     for (const h of hits) {
       const o = h.object;
       if (o?.userData?.isSwitch) return o;
@@ -49,13 +50,11 @@ export function setupSwitches(
     return null;
   }
 
-  // ----- bloom helpers (hoisted)
-  function hasBloom() {
-    return !!bloom && typeof bloom.mark === "function";
-  }
+  // ----- bloom helpers (optional)
+  const hasBloom = () => !!bloom && typeof bloom.mark === "function";
   function markOn(mesh, color) {
     if (!hasBloom() || !mesh) return;
-    bloom.setBoost?.(mesh, { color, intensity: BLOOM_INTENSITY }); // keep cached bright material updated
+    bloom.setBoost?.(mesh, { color, intensity: BLOOM_INTENSITY });
     bloom.mark(mesh, true);
   }
   function markOff(mesh) {
@@ -66,48 +65,52 @@ export function setupSwitches(
   // ----- visuals
   function setSwitchVisual(mesh, on, hovering) {
     if (!mesh) return;
-    // show orange only when OFF + hovered
     if (hovering && !on) {
+      // orange only when OFF + hovered
       markOn(mesh, HOVER_BLOOM_COLOR);
-      return;
+    } else if (on) {
+      markOn(mesh, ON_BLOOM_COLOR); // green when ON
+    } else {
+      markOff(mesh);
     }
-    if (on) markOn(mesh, ON_BLOOM_COLOR);
-    else markOff(mesh);
   }
 
-  // ----- public api (THIS is what main.js gets)
+  // ----- API returned to main.js
   const api = {
-    switches: switchesMap, // expose the Map
-    onToggle: null, // main.js will assign this
+    switches: switchesMap,
+    onToggle: null, // main.js assigns a callback
     toggleSwitchById(id) {
       const s = switchesMap.get(id);
       if (!s) return;
       s.on = !s.on;
       setSwitchVisual(s.mesh, s.on, false);
-      api.onToggle?.(id, s.on); // << correct dispatch
+      api.onToggle?.(id, s.on);
     },
   };
 
-  // init
+  // ----- init each switch
   lamps.forEach((lamp, idx) => {
     lamp.userData.isSwitch = true;
     lamp.userData.switchId = idx;
 
+    // enlarge hit pad
     if (lamp.geometry) {
-      if (lamp.geometry.boundingSphere === null)
+      if (lamp.geometry.boundingSphere === null) {
         lamp.geometry.computeBoundingSphere();
-      if (lamp.geometry.boundingSphere)
-        lamp.geometry.boundingSphere.radius *= 1.7;
+      }
+      if (lamp.geometry.boundingSphere) {
+        lamp.geometry.boundingSphere.radius *= HITPAD_SCALE;
+      }
     }
 
     setSwitchVisual(lamp, false, false);
     switchesMap.set(idx, { mesh: lamp, on: false });
   });
 
-  // events
+  // ----- events
   const canvas = renderer.domElement;
 
-  const onMove = (e) => {
+  function onMove(e) {
     aimNDC(e);
     const hit = pickSwitch();
 
@@ -129,25 +132,24 @@ export function setupSwitches(
         ? "pointer"
         : "default";
     }
-  };
+  }
 
-  const onDown = (e) => {
+  function onDown(e) {
     aimNDC(e);
     const hit = pickSwitch();
-    if (hit && hit.userData?.isSwitch) {
-      whatDidIHit?.(hit);
+    if (!hit || !hit.userData?.isSwitch) return;
 
-      const id = hit.userData.switchId;
-      const s = switchesMap.get(id);
-      s.on = !s.on;
+    whatDidIHit?.(hit);
 
-      // immediate visual (green if ON)
-      setSwitchVisual(hit, s.on, false);
-      hovered = null;
+    const id = hit.userData.switchId;
+    const s = switchesMap.get(id);
+    s.on = !s.on;
 
-      api.onToggle?.(id, s.on); // << correct dispatch
-    }
-  };
+    setSwitchVisual(hit, s.on, false);
+    hovered = null;
+
+    api.onToggle?.(id, s.on);
+  }
 
   canvas.addEventListener("mousemove", onMove);
   canvas.addEventListener("mousedown", onDown);

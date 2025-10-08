@@ -1,4 +1,3 @@
-// src/bloom.js
 import * as THREE from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -14,7 +13,7 @@ const darkMaterial = new THREE.MeshBasicMaterial({
   toneMapped: false,
 });
 const savedMaterials = Object.create(null);
-const boostMaterials = Object.create(null); // uuid -> MeshBasicMaterial we use during the bloom pass
+const boostMaterials = Object.create(null); // uuid -> bright temp material used only during bloom pass
 
 export function setupBloom(
   renderer,
@@ -42,7 +41,7 @@ export function setupBloom(
       },
       vertexShader: `
         varying vec2 vUv;
-        void main() {
+        void main(){
           vUv = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
         }
@@ -51,7 +50,7 @@ export function setupBloom(
         uniform sampler2D baseTexture;
         uniform sampler2D bloomTexture;
         varying vec2 vUv;
-        void main() {
+        void main(){
           vec4 base  = texture2D(baseTexture,  vUv);
           vec4 bloom = texture2D(bloomTexture, vUv);
           gl_FragColor = base + bloom; // additive
@@ -65,12 +64,8 @@ export function setupBloom(
   finalComposer.addPass(renderScene);
   finalComposer.addPass(finalPass);
 
-  // ---- GLOBAL DEFAULT BOOST (used if you mark() without setBoost()) ----
-  let defaultBoost = {
-    color: new THREE.Color(0xffffff),
-    intensity: 1.0, // we multiply the color by this
-  };
-
+  // ---- default boost used only if you never call setBoost on a mesh ----
+  let defaultBoost = { color: new THREE.Color(0xffffff), intensity: 1.0 };
   function setDefaultBoost({ color = "#ffffff", intensity = 1.0 } = {}) {
     defaultBoost = {
       color: color instanceof THREE.Color ? color : new THREE.Color(color),
@@ -78,31 +73,29 @@ export function setupBloom(
     };
   }
 
-  // During bloom pass: non-bloom objects -> black. Bloom objects -> bright temp material.
+  // ---- bloom render prep ----
   function prepareBloom(obj) {
     if (!obj.isMesh) return;
 
     savedMaterials[obj.uuid] = obj.material;
 
-    // Not on bloom layer? make black.
     if (!bloomLayer.test(obj.layers)) {
       obj.material = darkMaterial;
       return;
     }
 
-    // Pull the requested boost or fall back to the default boost.
     const boost = obj.userData._bloomBoost || defaultBoost;
 
-    // Cache a bright MeshBasicMaterial per mesh and keep it in sync.
     let m = boostMaterials[obj.uuid];
     if (!m) {
+      // IMPORTANT: toneMapped true + direct multiply by intensity (your old working path)
       m = new THREE.MeshBasicMaterial({ toneMapped: true });
       boostMaterials[obj.uuid] = m;
     }
-    // color * intensity (values >1 are OK when toneMapped=true)
+
     const c =
       boost.color instanceof THREE.Color
-        ? boost.color.clone()
+        ? boost.color
         : new THREE.Color(boost.color);
     m.color.copy(c).multiplyScalar(boost.intensity ?? 1.0);
     m.needsUpdate = true;
@@ -134,33 +127,56 @@ export function setupBloom(
   }
   window.addEventListener("resize", resize);
 
-  // Public helpers
+  // ---- public helpers ----
   function mark(obj, on = true) {
     if (!obj) return;
     if (on) obj.layers.enable(BLOOM_LAYER_ID);
     else obj.layers.disable(BLOOM_LAYER_ID);
   }
+
   function markByName(root, name, on = true) {
     const want = String(name).toLowerCase();
     root.traverse((o) => {
       if (o.isMesh && (o.name || "").toLowerCase() === want) mark(o, on);
     });
   }
+
   function setBoost(obj, { color = "#ffffff", intensity = 1 } = {}) {
     if (!obj) return;
     const c = color instanceof THREE.Color ? color : new THREE.Color(color);
     obj.userData._bloomBoost = { color: c, intensity: intensity ?? 1 };
   }
+
   function setBoostByName(root, name, opts) {
     const want = String(name).toLowerCase();
     root.traverse((o) => {
       if (o.isMesh && (o.name || "").toLowerCase() === want) setBoost(o, opts);
     });
   }
+
   function setParams({ threshold: t, strength: s, radius: r } = {}) {
     if (t !== undefined) bloomPass.threshold = t;
     if (s !== undefined) bloomPass.strength = s;
     if (r !== undefined) bloomPass.radius = r;
+  }
+
+  // Optional: zero emissive so bloom is the only glow knob
+  function neutralize(obj) {
+    if (!obj) return;
+    const apply = (mesh) => {
+      if (!mesh || !mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      for (const m of mats) {
+        if (!m || !("emissive" in m)) continue;
+        m.emissive.setRGB(0, 0, 0);
+        if ("emissiveIntensity" in m) m.emissiveIntensity = 0;
+        m.needsUpdate = true;
+      }
+    };
+    if (typeof obj.traverse === "function") obj.traverse(apply);
+    else apply(obj);
   }
 
   return {
@@ -171,7 +187,8 @@ export function setupBloom(
     setBoost,
     setBoostByName,
     setParams,
-    setDefaultBoost, // ⬅ NEW
+    setDefaultBoost,
+    neutralize,
     BLOOM_LAYER_ID,
   };
 }

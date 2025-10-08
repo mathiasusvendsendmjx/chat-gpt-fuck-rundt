@@ -3,7 +3,7 @@ import * as THREE from "three";
 
 export function setupAround(worldRoot, bloom, opts = {}) {
   const colorHex = opts.color || "#ff9f1c"; // warm gold/orange
-  const intensityOn = opts.intensityOn ?? 2;
+  const intensityOn = opts.intensityOn ?? 0;
 
   const around = new Map(); // id -> { mesh, on }
 

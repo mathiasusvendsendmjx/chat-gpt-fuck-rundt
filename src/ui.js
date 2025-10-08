@@ -32,7 +32,6 @@ export function buildUI() {
   // Intro copy (edit freely). Right now EN/Alien are the same strings.
   let introPairs = [
     ["Indsæt tekst", "Indsæt tekst"],
-    ["Indsæt tekst", "Indsæt tekst"],
   ];
 
   // Guards to prevent double-start

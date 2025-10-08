@@ -9,7 +9,7 @@ import { makeHitXZ } from "./nav.js";
 import { setupSwitches } from "./switches.js";
 import { setupCrystals } from "./crystals.js";
 import { setupRunds } from "./runds.js";
-import { setupAround } from "./around.js"; // around1..4 toggled by switches
+import { setupAround } from "./around.js";
 import { createLayerMixer } from "./audio_layers.js";
 import { setupFinale } from "./finale.js";
 import { setupBloom } from "./bloom.js";
@@ -21,41 +21,43 @@ import {
 } from "./config.js";
 
 /* =========================================================
-   1) ONE PLACE TO TUNE BLOOM (shared per type)
+   1) BLOOM: one knob per TYPE (shared across all meshes in that type)
 ========================================================= */
-const BLOOM_POST = { threshold: 0.12, strength: 1.35, radius: 0.65 };
+const BLOOM_POST = { threshold: 0.12, strength: 1.35, radius: 0.3 };
 
 const BLOOM_TYPES = {
-  // name → { color, intensity, startOn, neutralize }
-  kant: { color: "#FFD45A", intensity: 0.2, startOn: true, neutralize: true }, // kantOut / kant*
+  kant: { color: "#FFD45A", intensity: 0.2, startOn: true, neutralize: true },
+
   around: {
-    color: "#0FE6D4",
+    color: "#FFD45A",
     intensity: 0.2,
     startOn: false,
     neutralize: true,
-  }, // around1..4
+  },
+
   crystal: {
     color: "#4ADE80",
-    intensity: 0.2,
+    intensity: 0.8,
     startOn: false,
     neutralize: true,
-  }, // crystal1..4
-  rund: { color: "#A855F7", intensity: 0.2, startOn: false, neutralize: true }, // rund1..4
+  },
+  rund: { color: "#A855F7", intensity: 0.8, startOn: false, neutralize: true },
+
   switch: {
     color: "#60A5FA",
-    intensity: 0.2,
+    intensity: 0.4,
     startOn: false,
     neutralize: true,
-  }, // switch*
+  },
+
   finale: {
     color: "#FFE8A3",
-    intensity: 0.2,
+    intensity: 0.4,
     startOn: false,
     neutralize: true,
-  }, // finale*
+  },
 };
 
-/* Name → type routing (case-insensitive) */
 const TYPE_PATTERNS = [
   { type: "kant", test: (n) => /^kant(out)?\b/.test(n) },
   { type: "around", test: (n) => /^around\d+\b/.test(n) },
@@ -72,7 +74,7 @@ function routeType(name) {
 }
 
 /* =========================================================
-   2) UI / SCANLINES
+   2) UI / scanlines
 ========================================================= */
 const ui = buildUI();
 ui.showOnly("title");
@@ -82,7 +84,7 @@ function setScanlines(on) {
 }
 
 /* =========================================================
-   3) CAMERA / CONTROLS / LIGHTING
+   3) Camera / controls / lighting
 ========================================================= */
 const canvas = renderer.domElement;
 if (!canvas.hasAttribute("tabindex")) canvas.setAttribute("tabindex", "-1");
@@ -113,7 +115,6 @@ const flashlight = new THREE.SpotLight(
 );
 flashlight.castShadow = false;
 flashRig.add(flashlight);
-flashlight.position.set(0, 0, 0);
 const flashTarget = new THREE.Object3D();
 flashTarget.position.set(0, 0, -1);
 flashRig.add(flashTarget);
@@ -122,19 +123,16 @@ flashlight.target = flashTarget;
 const shoulder = new THREE.PointLight(0xffffff, 1.8, 8, 1.6);
 camera.add(shoulder);
 shoulder.position.set(0.15, -0.05, -0.25);
-
 renderer.toneMappingExposure = 1.15;
 
 function setupCinematicLighting() {
-  const hemi = new THREE.HemisphereLight(0x1ce0a1, 0x060907, 0.35);
-  scene.add(hemi);
-  const amb = new THREE.AmbientLight(0x0e1512, 0.18);
-  scene.add(amb);
+  scene.add(new THREE.HemisphereLight(0x1ce0a1, 0x060907, 0.35));
+  scene.add(new THREE.AmbientLight(0x0e1512, 0.18));
   scene.fog = new THREE.FogExp2(0x000000, 0.002);
 }
 
 /* =========================================================
-   4) BLOOM UTILS
+   4) Bloom helpers
 ========================================================= */
 function flattenEmissive(mesh) {
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -146,31 +144,38 @@ function flattenEmissive(mesh) {
   }
 }
 
-function applyTypePresets(worldRoot, bloom) {
-  // Create per-type bucket for every key in BLOOM_TYPES (prevents .push on undefined)
+// returns { kant:[], around:[], crystal:[], rund:[], switch:[], finale:[] }
+function applyTypePresets(root, bloom) {
   const byType = Object.fromEntries(
     Object.keys(BLOOM_TYPES).map((k) => [k, []])
   );
-
-  worldRoot.traverse((o) => {
+  root.traverse((o) => {
     if (!o.isMesh) return;
     const t = routeType(o.name);
-    if (!t || !BLOOM_TYPES[t]) return;
-
+    if (!t) return;
     const preset = BLOOM_TYPES[t];
+    if (!preset) return;
     if (preset.neutralize) flattenEmissive(o);
-
     bloom.setBoost?.(o, { color: preset.color, intensity: preset.intensity });
     bloom.mark?.(o, !!preset.startOn);
-
     byType[t].push(o);
   });
-
   return byType;
 }
 
+// find one mesh by exact name
+function getMeshByName(root, name) {
+  const want = String(name).toLowerCase();
+  let out = null;
+  root.traverse((o) => {
+    if (out || !o.isMesh) return;
+    if ((o.name || "").toLowerCase() === want) out = o;
+  });
+  return out;
+}
+
 /* =========================================================
-   5) POINTER LOCK ↔ UI
+   5) Pointer lock ↔ UI
 ========================================================= */
 let wantingLock = false;
 controls.addEventListener("lock", () => {
@@ -203,12 +208,12 @@ function requestLock(e) {
     controls.lock();
   } catch (err) {
     wantingLock = false;
-    console.error("PointerLock request failed:", err);
+    console.error(err);
   }
 }
 
 /* =========================================================
-   6) FLOW
+   6) Flow
 ========================================================= */
 let audio;
 ui.btnStartTitle.addEventListener("click", async () => {
@@ -254,7 +259,7 @@ ui.btnIntroNext.addEventListener("click", async () => {
       m.transparent = true;
       m.opacity = 0;
       m.colorWrite = false;
-      m.depthWrite = false; // critical
+      m.depthWrite = false;
       m.toneMapped = false;
     }
   });
@@ -273,7 +278,7 @@ ui.btnIntroNext.addEventListener("click", async () => {
   let bloom;
   try {
     bloom = setupBloom(renderer, scene, camera, BLOOM_POST);
-    bloom.setDefaultBoost?.({ color: "#ffffff", intensity: 1.0 }); // safe fallback
+    bloom.setDefaultBoost?.({ color: "#ffffff", intensity: 1.0 });
   } catch (err) {
     console.error("[Bloom] setup failed:", err);
     bloom = {
@@ -285,10 +290,10 @@ ui.btnIntroNext.addEventListener("click", async () => {
 
   setupCinematicLighting();
 
-  // Apply shared type presets (ONE knob per type)
+  // Apply shared type presets and keep references
   const meshesByType = applyTypePresets(worldRoot, bloom);
 
-  // Around rings tied to switches (they also follow the "around" knob)
+  // Around rings (also neutralized)
   const around = setupAround(worldRoot, bloom, {
     color: BLOOM_TYPES.around.color,
     intensityOn: BLOOM_TYPES.around.intensity,
@@ -309,14 +314,34 @@ ui.btnIntroNext.addEventListener("click", async () => {
   const runds = setupRunds(worldRoot);
   const finale = setupFinale(worldRoot, bloom);
 
-  // Switch → visuals/audio/bloom
+  // Helper: re-scan for finale meshes that may be spawned later
+  function rescanFinaleMeshes() {
+    worldRoot.traverse((o) => {
+      if (!o.isMesh) return;
+      const n = (o.name || "").toLowerCase();
+      if (!/^finale\b/.test(n)) return;
+      if (!meshesByType.finale.includes(o)) {
+        if (BLOOM_TYPES.finale.neutralize) flattenEmissive(o);
+        bloom.setBoost?.(o, BLOOM_TYPES.finale);
+        if (BLOOM_TYPES.finale.startOn) bloom.mark?.(o, true);
+        meshesByType.finale.push(o);
+      }
+    });
+  }
+
+  // Switch → visuals/audio/bloom (uses the TYPE knobs)
   switches.onToggle = (id, on) => {
     crystals.setCrystalOn(id, on);
     runds.setRundOn(id, on);
     around.setAroundOn?.(id, on);
 
-    // Optional: bloom the visible switch mesh itself using the shared "switch" knob
-    const swMesh = switches.switches?.get(id)?.mesh;
+    // Find the physical switch mesh by name (switch1..4)
+    const swName = `switch${id + 1}`;
+    const swMesh =
+      getMeshByName(worldRoot, swName) ||
+      (meshesByType.switch || []).find(
+        (m) => (m.name || "").toLowerCase() === swName
+      );
     if (swMesh) {
       if (BLOOM_TYPES.switch.neutralize) flattenEmissive(swMesh);
       bloom.setBoost?.(swMesh, BLOOM_TYPES.switch);
@@ -325,10 +350,8 @@ ui.btnIntroNext.addEventListener("click", async () => {
 
     if (on) {
       audio?.setLayerOn(id, true);
-
       const cMesh = crystals.crystals?.get(id)?.mesh;
       const rMesh = runds.runds?.get(id)?.mesh;
-
       if (cMesh) {
         if (BLOOM_TYPES.crystal.neutralize) flattenEmissive(cMesh);
         bloom.setBoost?.(cMesh, BLOOM_TYPES.crystal);
@@ -343,17 +366,18 @@ ui.btnIntroNext.addEventListener("click", async () => {
 
     const allOn = Array.from(switches.switches.values()).every((s) => s.on);
     if (allOn) {
-      finale.arm();
+      finale.arm?.();
 
-      // Light up any meshes named finale* with the shared finale knob
-      for (const m of meshesByType.finale || []) {
+      // Make all finale* meshes follow the finale knob
+      rescanFinaleMeshes();
+      for (const m of meshesByType.finale) {
         if (BLOOM_TYPES.finale.neutralize) flattenEmissive(m);
         bloom.setBoost?.(m, BLOOM_TYPES.finale);
         bloom.mark?.(m, true);
       }
 
-      // Reassert kant brightness too if you want a final punch
-      for (const m of meshesByType.kant || []) {
+      // Optional: reassert kant brightness at the end
+      for (const m of meshesByType.kant) {
         bloom.setBoost?.(m, BLOOM_TYPES.kant);
         bloom.mark?.(m, true);
       }
@@ -364,6 +388,18 @@ ui.btnIntroNext.addEventListener("click", async () => {
   canvas.style.visibility = "hidden";
   setScanlines(true);
 
+  // Keep switch/finale under YOUR control even if their files tweak emissive
+  function reassertTypeControl() {
+    for (const m of meshesByType.switch) {
+      if (BLOOM_TYPES.switch.neutralize) flattenEmissive(m);
+      bloom.setBoost?.(m, BLOOM_TYPES.switch);
+    }
+    for (const m of meshesByType.finale) {
+      if (BLOOM_TYPES.finale.neutralize) flattenEmissive(m);
+      bloom.setBoost?.(m, BLOOM_TYPES.finale);
+    }
+  }
+
   const clock = new THREE.Clock();
   function animate() {
     const dt = Math.min(clock.getDelta(), MAX_DT);
@@ -372,6 +408,12 @@ ui.btnIntroNext.addEventListener("click", async () => {
     runds.tick?.(dt);
     around.tick?.(dt);
     finale.tick?.(dt);
+
+    // If finale spawns new stuff, capture it
+    rescanFinaleMeshes();
+
+    // Reassert control so per-file emissive can't override your knob
+    reassertTypeControl();
 
     const wasVisible = navMesh.visible;
     navMesh.visible = false;

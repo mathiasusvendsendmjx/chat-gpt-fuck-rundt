@@ -22,17 +22,17 @@ export function setupFinale(worldRoot, bloom) {
 
     // Mark for bloom + give them strong bloom color (no emissive needed)
     if (targets.kant1) {
-      bloom?.setBoost(targets.kant1, { color: "#f59e0b", intensity: 2 });
+      bloom?.setBoost(targets.kant1, { color: "#f59e0b", intensity: 1 });
       bloom?.mark(targets.kant1, true);
       targets.kant1.userData.spinSpeed = 0.8;
     }
     if (targets.kant2) {
-      bloom?.setBoost(targets.kant2, { color: "#f59e0b", intensity: 2 });
+      bloom?.setBoost(targets.kant2, { color: "#f59e0b", intensity: 1 });
       bloom?.mark(targets.kant2, true);
       targets.kant2.userData.spinSpeed = 0.8;
     }
     if (targets.hjerne) {
-      bloom?.setBoost(targets.hjerne, { color: "#ef4444", intensity: 2.5 });
+      bloom?.setBoost(targets.hjerne, { color: "#ef4444", intensity: 1 });
       bloom?.mark(targets.hjerne, true);
     }
 

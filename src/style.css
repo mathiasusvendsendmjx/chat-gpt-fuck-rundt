@@ -1,10 +1,10 @@
 /* =========================================================
-   Base
+   BASE
 ========================================================= */
 html, body {
   margin: 0;
   height: 100%;
-  background: #000;              /* hard black stage */
+  background: #000;                 /* hard black stage */
   color: #fff;
   overflow: hidden;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
@@ -13,7 +13,7 @@ button { font: inherit; }
 canvas { display: block; }
 
 /* =========================================================
-   Custom "alien" font (keep both paths; whichever exists will load)
+   CUSTOM FONT (Alien)
 ========================================================= */
 @font-face {
   font-family: "ThreeJsAlien";
@@ -26,171 +26,160 @@ canvas { display: block; }
 }
 
 /* =========================================================
-   UI shell (overlays/cards/buttons/progress)
+   UI ROOT + OVERLAYS
 ========================================================= */
 #ui-root {
   position: fixed;
   inset: 0;
-  pointer-events: none; /* children can re-enable */
+  pointer-events: none;      /* children can re-enable */
   z-index: 1000;
-}
-
-/* each "screen" */
-.ui-overlay {
-  position: absolute;
-  inset: 0;
-  display: none;          /* toggled by showOnly(name) */
-  align-items: center;
-  justify-content: center;
-  background: transparent;   /* NO overlay wash */
-  pointer-events: auto;
-}
-.ui-overlay.show { display: flex; }
-
-/* base card (transparent by default) */
-.ui-card {
-  width: min(900px, 92vw);
-  background: transparent;    /* NO panel fill */
-  border: 0;
-  border-radius: 8px;
-  padding: 24px;
-  color: #e5e7eb;
-  box-shadow: none;           /* glow handled in .term below */
-}
-.ui-card.small { width: min(520px, 92vw); }
-
-.ui-title {
-  text-align: left;
-  letter-spacing: .2em;
-  font-size: clamp(18px, 2.6vw, 28px);
-  margin: 0 0 16px;
-  color: #a7f3d0;
-  text-transform: uppercase;
-}
-
-/* buttons */
-.ui-button {
-  margin: 18px 0 4px;
-  display: inline-block;
-  background: #10b981;
-  color: #0b1f17;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 22px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform .06s ease, filter .15s ease;
-  pointer-events: auto;
-}
-.ui-button:hover   { filter: brightness(1.05); transform: translateY(-1px); }
-.ui-button:active  { transform: translateY(0); }
-
-/* loading bar */
-.ui-loading-title { text-align: left; margin-bottom: 12px; }
-.ui-progress {
-  height: 8px;
-  background: rgba(255,255,255,.1);
-  border-radius: 999px;
-  overflow: hidden;
-}
-.ui-progress-bar {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #10b981, #34d399);
-  transition: width .2s ease;
-}
-
-.ui-list { margin: 10px 0 16px; padding-left: 18px; }
-
-/* =========================================================
-   Controls diagram (WASD + mouse) — inherits theme colors
-========================================================= */
-.controls-visual{ display:flex; align-items:center; justify-content:center; gap:28px; margin:12px 0 6px; }
-.wasd{ width:min(240px,45%); height:auto; }
-.mouse{ width:min(160px,35%); height:auto; }
-.key-bg{ fill: transparent; stroke: currentColor; stroke-width: 2.5; }
-.key-label{
-  fill: currentColor;
-  font: 700 24px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  text-anchor: middle; dominant-baseline: middle;
-}
-.mouse-body path{ fill: transparent; stroke: currentColor; stroke-width: 2.5; }
-.mouse-split{ stroke: currentColor; stroke-width: 1.5; opacity:.6; }
-.mouse-wheel{ fill: currentColor; opacity:.9; }
-.mouse-label{
-  fill: currentColor;
-  font: 600 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-}
-@media (max-width:560px){ .controls-visual{ flex-direction:column; gap:18px; } }
-
-/* =========================================================
-   CRT THEME (base) — variables + NO vignette/scanlines
-========================================================= */
-:root{
-  --crt-fg:   #85ffbd;   /* main text */
-  --crt-hi:   #b9ffd7;   /* brighter for headers/buttons */
-  --crt-line: #20543b;   /* borders / grid */
-  --crt-bg:   #000000;   /* screen bg */
-
-  /* glow strength knobs */
-  --crt-bloom:    0.0;   /* base theme off */
-  --crt-bloom-hi: 0.0;
-}
-
-#ui-root.crt-theme {
   color: var(--crt-fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
-/* Kill scanlines/vignette entirely */
-#ui-root.crt-theme::before,
-#ui-root.crt-theme::after { content: none !important; }
+/* Each screen */
+.ui-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;             /* toggled by showOnly(name) */
+  align-items: center;
+  justify-content: center;
+  background: transparent;   /* no global wash */
+  pointer-events: auto;
+}
+.ui-overlay.show { display: flex; }
 
-/* terminal-styled cards: transparent with border + glow only */
-.ui-card.term{
-  background: transparent;                 /* NO fill */
-  border: 2px solid var(--crt-line);       /* lines visible */
-  border-radius: 6px;
-  padding: 24px;
+/* Resume gets solid black for contrast */
+.ui-overlay.ui-resume { background: #000 !important; }
+
+/* =========================================================
+   CRT THEME (AMBER)
+   – variables
+   – vignette + scanlines
+========================================================= */
+#ui-root.crt-theme.crt-amber {
+  --crt-fg:       #ffd081;   /* main text */
+  --crt-hi:       #fff0b3;   /* headers/buttons highlight */
+  --crt-line:     #ff9a1a;   /* borders/grid */
+  --crt-bloom:    1.25;      /* text/line glow power */
+  --crt-bloom-hi: 1.75;      /* header/button extra glow */
   color: var(--crt-fg);
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0) inset,
-    0 0 calc(26px * var(--crt-bloom)) rgba(255,255,255,.0); /* base theme zero */
 }
 
-/* header bar (no bar fill; just bottom line + text glow) */
-.ui-card.term[data-term-title]::before{
+/* amber scanlines */
+#ui-root.crt-theme.crt-amber::before {
+  content:"";
+  position: fixed; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255,210,140,.08) 0 1px,
+      rgba(0,0,0,0)         1px 3px
+    );
+  mix-blend-mode: screen;
+  opacity: 0.2;
+}
+
+/* amber vignette / cabinet glow */
+#ui-root.crt-theme.crt-amber::after {
+  content:"";
+  position: fixed; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 95% at 50% -10%, rgba(255,170,60,.14), rgba(0,0,0,0) 38%),
+    radial-gradient(120% 95% at 50% 120%, rgba(255,140,30,.14), rgba(0,0,0,0) 44%),
+    radial-gradient(ellipse at center, rgba(0,0,0,.70), transparent 72%);
+  opacity: .9;
+}
+
+/* =========================================================
+   CARD: TERMINAL STYLE (transparent face + glowing lines)
+========================================================= */
+.ui-card {
+  width: min(900px, 92vw);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 24px;
+  color: inherit;
+  box-shadow: none;
+}
+.ui-card.small { width: min(520px, 92vw); }
+
+.ui-card.term {
+  border: 2px solid var(--crt-line);
+  border-radius: 6px;
+  padding: 24px;
+  box-shadow:
+    0 0 0 1px rgba(255,165,70,.08) inset,
+    0 0 calc(26px * var(--crt-bloom)) rgba(255,150,40,.28),
+    0 0 calc(80px * var(--crt-bloom)) rgba(255,120,20,.12);
+}
+
+/* Header bar */
+.ui-card.term[data-term-title]::before {
   content: attr(data-term-title);
   display: block;
   margin: -24px -24px 16px;
   padding: 6px 10px;
   border-bottom: 2px solid var(--crt-line);
-  background: transparent;                 /* NO bar fill */
+  background: rgba(60,30,10,.55);
   color: var(--crt-hi);
   letter-spacing: .18em;
   font-weight: 700;
-  text-shadow: 0 0 calc(8px * var(--crt-bloom-hi)) rgba(255,255,255,.25);
+  text-shadow:
+    0 0 calc(10px * var(--crt-bloom-hi)) rgba(255,180,90,.60),
+    0 0 calc(22px * var(--crt-bloom-hi)) rgba(255,140,40,.35);
 }
 
-/* headings glow */
+/* Headings */
 .ui-card.term .ui-title,
 .ui-card.term h1,
-.ui-card.term h2{
+.ui-card.term h2 {
   color: var(--crt-hi);
   letter-spacing: .12em;
   text-transform: uppercase;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   text-shadow:
-    0 0 calc(10px * var(--crt-bloom)) rgba(255,255,255,.25);
+    0 0 calc(10px * var(--crt-bloom)) rgba(255,170,60,.45),
+    0 0 calc(22px * var(--crt-bloom)) rgba(255,130,30,.25);
 }
 
-/* progress styled as register bar */
-.ui-progress{
+/* =========================================================
+   BUTTONS (amber slab)
+========================================================= */
+.ui-button {
+  display: inline-block;
+  margin: 18px 0 4px;
+  padding: 12px 22px;
+  background: var(--crt-hi);
+  color: #2a1906;
+  border: 2px solid var(--crt-line);
+  border-radius: 4px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: filter .12s ease, transform .06s ease;
+  box-shadow:
+    0 0 calc(16px * var(--crt-bloom)) rgba(255,165,70,.50),
+    0 0 calc(36px * var(--crt-bloom)) rgba(255,130,30,.25);
+  pointer-events: auto;
+}
+.ui-button:hover  { filter: brightness(1.08) drop-shadow(0 0 6px rgba(255,180,90,.65)); }
+.ui-button:active { transform: translateY(1px); }
+
+/* =========================================================
+   PROGRESS BAR (register-style)
+========================================================= */
+.ui-loading-title { margin-bottom: 12px; }
+.ui-progress {
+  height: 8px;
   background: transparent;
   border: 2px solid var(--crt-line);
   border-radius: 4px;
+  overflow: hidden;
 }
-.ui-progress-bar{
+.ui-progress-bar {
   height: 100%;
   width: 0%;
   background: repeating-linear-gradient(
@@ -203,115 +192,194 @@ canvas { display: block; }
 }
 
 /* =========================================================
-   AMBER OVERRIDE (Fairlight-y) — pure black background
+   CONTROLS DIAGRAM (WASD + mouse) — amber lines
 ========================================================= */
-#ui-root.crt-theme.crt-amber{
-  --crt-fg:       #ff9a1a;   /* main text */
-  --crt-hi:       #ff9a1a;   /* highlights/buttons */
-  --crt-line:     #ff9a1a;   /* borders/grids */
-  --crt-bg:       #000000;   /* hard black */
-  --crt-bloom:    2.00;      /* text/line glow */
-  --crt-bloom-hi: 1.60;
-  color: var(--crt-fg);
-}
-
-/* (still no vignette/scanlines in amber) */
-#ui-root.crt-theme.crt-amber::before,
-#ui-root.crt-theme.crt-amber::after { content: none !important; }
-
-/* Card border & glow in amber */
-#ui-root.crt-theme.crt-amber .ui-card.term{
-  border-color: var(--crt-line);
-  box-shadow:
-    0 0 0 1px rgba(255,165,70,.10) inset,
-    0 0 calc(26px * var(--crt-bloom)) rgba(255,150,40,.28),
-    0 0 calc(80px * var(--crt-bloom)) rgba(255,120,20,.12);
-}
-
-/* Header text glow in amber */
-#ui-root.crt-theme.crt-amber .ui-card.term[data-term-title]::before{
-  color: var(--crt-hi);
-  text-shadow:
-    0 0 calc(10px * var(--crt-bloom-hi)) rgba(255,180,90,.60),
-    0 0 calc(22px * var(--crt-bloom-hi)) rgba(255,140,40,.35);
-}
-
-/* Headline + typed lines glow (amber) */
-#ui-root.crt-theme.crt-amber .ui-card.term .ui-title,
-#ui-root.crt-theme.crt-amber .tw-en,
-#ui-root.crt-theme.crt-amber .tw-alien{
-  text-shadow:
-    0 0 calc(10px * var(--crt-bloom)) rgba(255,170,60,.45),
-    0 0 calc(22px * var(--crt-bloom)) rgba(255,130,30,.25);
-}
-
-/* Buttons in strong amber */
-#ui-root.crt-theme.crt-amber .ui-button{
-  background: var(--crt-hi);
-  border: 2px solid var(--crt-line);
-  color: #2a1906;
-  border-radius: 4px;
-  box-shadow:
-    0 0 calc(16px * var(--crt-bloom)) rgba(255,165,70,.50),
-    0 0 calc(36px * var(--crt-bloom)) rgba(255,130,30,.25);
-}
-#ui-root.crt-theme.crt-amber .ui-button:hover{
-  filter: brightness(1.08) drop-shadow(0 0 6px rgba(255,180,90,.65));
-}
-
-/* Controls SVG in amber line style */
-#ui-root.crt-theme.crt-amber .controls-visual .key .key-bg{
-  fill: transparent;
-  stroke: var(--crt-line);
-  stroke-width: 2;
-}
-#ui-root.crt-theme.crt-amber .controls-visual .key .key-label{
-  fill: var(--crt-hi);
-}
-#ui-root.crt-theme.crt-amber .controls-visual .mouse .mouse-body path{
-  fill: transparent;
-  stroke: var(--crt-line);
-  stroke-width: 2;
-}
-#ui-root.crt-theme.crt-amber .controls-visual .mouse .mouse-split,
-#ui-root.crt-theme.crt-amber .controls-visual .mouse .mouse-wheel{
-  stroke: var(--crt-line);
-  fill: var(--crt-line);
-}
+.controls-visual { display:flex; align-items:center; justify-content:center; gap:28px; margin:12px 0 6px; }
+.wasd  { width:min(240px,45%); height:auto; }
+.mouse { width:min(160px,35%); height:auto; }
+.key-bg       { fill: transparent; stroke: var(--crt-line); stroke-width: 2; }
+.key-label    { fill: var(--crt-hi); font: 700 24px ui-monospace, monospace; text-anchor: middle; dominant-baseline: middle; }
+.mouse-body path { fill: transparent; stroke: var(--crt-line); stroke-width: 2; }
+.mouse-split, .mouse-wheel { stroke: var(--crt-line); fill: var(--crt-line); }
+.mouse-label  { fill: var(--crt-hi); font: 600 12px ui-monospace, monospace; }
+@media (max-width:560px){ .controls-visual { flex-direction:column; gap:18px; } }
 
 /* =========================================================
-   STACKED TYPEWRITER (English + Alien under)
+   STACKED TYPE (English + Alien under) + bloom
 ========================================================= */
-.tw-block{ display:flex; flex-direction:column; gap:8px; }
-.tw-line{ margin: 4px 0; }
+.tw-block { display:flex; flex-direction:column; gap:8px; }
+.tw-line  { margin: 4px 0; }
 
-.tw-en{
+.tw-en {
   font-size: clamp(16px, 1.6vw, 22px);
   line-height: 1.35;
   color: var(--crt-fg);
-}
-.tw-alien{
-  font-family: "ThreeJsAlien", monospace;
-  font-size: clamp(14px, 1.6vw, 22px);  /* bigger, closer to EN */
-  line-height: 1.15;
-  letter-spacing: .1em;
-  color: var(--crt-hi);
-  opacity: .98;
-  margin-top: 1px;                       /* tighter EN↔AL gap */
-}
-
-/* --- Strong UI text bloom (typed lines, headers) --- */
-.bloom-text {
-  /* base glow */
   text-shadow:
     0 0 8px  rgba(255,170,60,.55),
     0 0 18px rgba(255,140,30,.35),
     0 0 36px rgba(255,120,20,.22);
-  /* tiny extra ‘CRT’ punch */
-  filter: drop-shadow(0 0 4px rgba(255,160,40,.45));
+}
+.tw-alien {
+  font-family: "ThreeJsAlien", monospace;
+  font-size: clamp(14px, 1.6vw, 22px);
+  line-height: 1.15;
+  letter-spacing: .1em;
+  color: var(--crt-hi);
+  opacity: .98;
+  margin-top: 1px;
+  text-shadow:
+    0 0 8px  rgba(255,170,60,.55),
+    0 0 18px rgba(255,140,30,.35),
+    0 0 36px rgba(255,120,20,.22);
 }
 
-/* Make the Resume overlay background fully black so it’s readable */
-.ui-overlay.ui-resume {
-  background: #000 !important;   /* overrides the radial gradient */
+/* =========================================================
+   INTRO CARD — fixed size, no reflow while typing
+========================================================= */
+.ui-intro .ui-card.term {
+  width: min(1100px, 92vw);
+  height: clamp(420px, 68vh, 700px);
+  display: flex;
+  flex-direction: column;
+}
+.ui-intro .ui-card.term .ui-title { margin-bottom: 16px; }
+.ui-intro #intro-typed {
+  flex: 1;
+  overflow: auto;            /* scroll only if needed; box stays fixed */
+  padding-right: 6px;
+}
+.ui-intro .ui-button {
+  align-self: flex-start;
+  margin-top: 14px;
+}
+
+/* ----- CRT overlays (shared) ----- */
+#ui-root.crt-theme::before,
+#ui-root.crt-theme::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  transition: opacity .25s ease; /* lets us fade them out */
+}
+
+/* Scanlines + soft case glow (AMBER) */
+#ui-root.crt-theme.crt-amber::before{
+  /* clean scanlines, no banding */
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 186, 100, .11) 0 1px,
+    rgba(0,0,0,0)            1px 3px
+  );
+  mix-blend-mode: screen;
+  opacity:1;               /* strength */
+}
+
+/* Edge-only vignette (no center dim) */
+#ui-root.crt-theme.crt-amber::after{
+  background: none;          /* no radial darkener */
+  /* edge glow instead of middle fade */
+  opacity: 1;
+}
+
+/* Toggle class to disable overlays entirely */
+#ui-root.noscan::before,
+#ui-root.noscan::after{
+  opacity: 0 !important;
+}
+
+/* =========================================================
+   CRT THEME (GREEN)
+   Swap to this by using: #ui-root.crt-theme.crt-green
+========================================================= */
+#ui-root.crt-theme.crt-green{
+  --crt-fg:       #b9ffd7;   /* main text */
+  --crt-hi:       #e8fff4;   /* headings/buttons highlight */
+  --crt-line:     #1fa323;   /* borders/grid lines */
+  --crt-bloom:    1.25;      /* text/line glow */
+  --crt-bloom-hi: 1.75;      /* header/button extra glow */
+  color: var(--crt-fg);
+}
+
+/* scanlines (minty) */
+#ui-root.crt-theme.crt-green::before{
+  content:"";
+  position:fixed; inset:0; pointer-events:none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(133,255,189,.12) 0 1px,
+    rgba(0,0,0,0)         1px 3px
+  );
+  mix-blend-mode: screen;
+  opacity:.22;
+}
+
+/* no center dim; we keep it clean & black */
+#ui-root.crt-theme.crt-green::after{
+  content:"";
+  position:fixed; inset:0; pointer-events:none;
+  background:none;
+  opacity:1;
+}
+
+/* Card border & glow in green */
+#ui-root.crt-theme.crt-green .ui-card.term{
+  border-color: var(--crt-line);
+  box-shadow:
+    0 0 0 1px rgba(120,255,190,.10) inset,
+    0 0 calc(26px * var(--crt-bloom)) rgba(70,255,190,.28),
+    0 0 calc(80px * var(--crt-bloom)) rgba(30,220,140,.14);
+}
+
+/* Terminal header glow */
+#ui-root.crt-theme.crt-green .ui-card.term[data-term-title]::before{
+  color: var(--crt-hi);
+  background: rgba(6,30,20,.55);
+  border-bottom: 2px solid var(--crt-line);
+  text-shadow:
+    0 0 calc(10px * var(--crt-bloom-hi)) rgba(150,255,210,.65),
+    0 0 calc(22px * var(--crt-bloom-hi)) rgba(60,220,150,.40);
+}
+
+/* Headline + typed lines glow (green) */
+#ui-root.crt-theme.crt-green .ui-card.term .ui-title,
+#ui-root.crt-theme.crt-green .tw-en,
+#ui-root.crt-theme.crt-green .tw-alien{
+  text-shadow:
+    0 0 calc(10px * var(--crt-bloom)) rgba(133,255,189,.55),
+    0 0 calc(22px * var(--crt-bloom)) rgba(16,185,129,.35);
+}
+
+/* Buttons in green slab style */
+#ui-root.crt-theme.crt-green .ui-button{
+  background: var(--crt-hi);
+  border: 2px solid var(--crt-line);
+  color: #072418;
+  border-radius: 4px;
+  box-shadow:
+    0 0 calc(16px * var(--crt-bloom)) rgba(120,255,190,.55),
+    0 0 calc(36px * var(--crt-bloom)) rgba(40,200,140,.28);
+}
+#ui-root.crt-theme.crt-green .ui-button:hover{
+  filter: brightness(1.08) drop-shadow(0 0 6px rgba(140,255,210,.7));
+}
+
+/* Controls SVG (keys + mouse) with green lines */
+#ui-root.crt-theme.crt-green .controls-visual .key .key-bg{
+  fill: transparent;
+  stroke: var(--crt-line);
+  stroke-width: 2;
+}
+#ui-root.crt-theme.crt-green .controls-visual .key .key-label{
+  fill: var(--crt-hi);
+}
+#ui-root.crt-theme.crt-green .controls-visual .mouse .mouse-body path{
+  fill: transparent;
+  stroke: var(--crt-line);
+  stroke-width: 2;
+}
+#ui-root.crt-theme.crt-green .controls-visual .mouse .mouse-split,
+#ui-root.crt-theme.crt-green .controls-visual .mouse .mouse-wheel{
+  stroke: var(--crt-line);
+  fill: var(--crt-line);
 }

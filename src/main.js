@@ -21,6 +21,11 @@ import {
 
 const ui = buildUI();
 ui.showOnly("title"); // Title screen first
+setScanlines(true); // show CRT overlays for UI by default
+
+function setScanlines(on) {
+  ui.root.classList.toggle("noscan", !on);
+}
 
 const canvas = renderer.domElement;
 if (!canvas.hasAttribute("tabindex")) canvas.setAttribute("tabindex", "-1");
@@ -40,19 +45,20 @@ function setFromDegrees(yawDeg, pitchDeg) {
 // Controls / movement
 const { controls, update } = setupMovement(camera, renderer);
 
-// ---------- FLASHLIGHT ----------
+/* ============ CAMERA LIGHT RIG (wide spot + shoulder fill) ============ */
 scene.add(camera);
 const flashRig = new THREE.Object3D();
-flashRig.rotation.x = 0;
 camera.add(flashRig);
+
 const flashlight = new THREE.SpotLight(
-  0xffffff,
-  50,
-  200,
-  THREE.MathUtils.degToRad(60),
-  0.9,
-  0.8
+  0xffffff, // color
+  70, // intensity
+  350, // distance
+  THREE.MathUtils.degToRad(65), // cone
+  0.95, // penumbra
+  1.0 // decay
 );
+flashlight.castShadow = false;
 flashRig.add(flashlight);
 flashlight.position.set(0, 0, 0);
 const flashTarget = new THREE.Object3D();
@@ -60,21 +66,61 @@ flashTarget.position.set(0, 0, -1);
 flashRig.add(flashTarget);
 flashlight.target = flashTarget;
 
-// ---------- Pointer lock ↔ UI ----------
+const shoulder = new THREE.PointLight(0xffffff, 1.8, 8, 1.6);
+camera.add(shoulder);
+shoulder.position.set(0.15, -0.05, -0.25);
+
+renderer.toneMappingExposure = 1.15;
+
+/* ============ WORLD FILL + FOG ============ */
+function setupCinematicLighting() {
+  const hemi = new THREE.HemisphereLight(0x1ce0a1, 0x060907, 0.35);
+  scene.add(hemi);
+
+  const amb = new THREE.AmbientLight(0x0e1512, 0.18);
+  scene.add(amb);
+
+  scene.fog = new THREE.FogExp2(0x000000, 0.002);
+}
+
+/* ============ KANT OUT HELPER (runs after world+bloom ready) ============ */
+function setupKantOut(worldRoot, bloom) {
+  let mesh = null;
+  worldRoot.traverse((o) => {
+    const name = (o.name || "").toLowerCase();
+    if (o.isMesh && (name === "kantout" || /^kantout\b/.test(name))) {
+      mesh = o;
+      // pre-glow gold
+      bloom?.setBoost?.(o, { color: "#f6c453", intensity: 1.6 });
+      bloom?.mark?.(o, true);
+      console.log("[Bloom] kantOut marked:", o.name);
+    }
+  });
+  if (!mesh) console.warn("[Bloom] kantOut not found in scene");
+  return { mesh, spin: false };
+}
+
+/* ---------- Pointer lock ↔ UI ---------- */
 let wantingLock = false;
+
 controls.addEventListener("lock", () => {
   wantingLock = false;
   canvas.style.cursor = "none";
+  setScanlines(false); // HIDE scanlines in-game
   ui.showOnly(null);
 });
+
 controls.addEventListener("unlock", () => {
   wantingLock = false;
   canvas.style.cursor = "default";
+  setScanlines(true); // RESTORE scanlines on UI
   ui.showOnly("resume");
 });
+
 document.addEventListener("pointerlockerror", () => {
   wantingLock = false;
   canvas.style.cursor = "default";
+  setScanlines(true);
   ui.showOnly("resume");
 });
 
@@ -124,7 +170,7 @@ function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
 }
 /* ---------------------------------- */
 
-// ====== NEW FLOW ======
+// ====== FLOW ======
 
 // Music starts on the TITLE "Start" button
 let audio; // keep reference globally
@@ -153,7 +199,7 @@ ui.btnStartTitle.addEventListener("click", async () => {
   ui.playIntroTypewriter?.();
 });
 
-// INTRO → Continue → now load the world (moved here from the old Start)
+// INTRO → Continue → load the world
 ui.btnIntroNext.addEventListener("click", async () => {
   console.log("[UI] Intro Continue clicked");
   ui.showOnly("loading");
@@ -168,12 +214,21 @@ ui.btnIntroNext.addEventListener("click", async () => {
   scene.add(worldRoot);
   window.worldRoot = worldRoot;
 
-  navMesh.traverse((o) => {
-    if (o.isMesh && o.material) {
-      o.material.transparent = true;
-      o.material.opacity = 0;
-    }
-  });
+ navMesh.traverse((o) => {
+   if (o.isMesh) {
+     const mats = Array.isArray(o.material) ? o.material : [o.material];
+     for (const m of mats) {
+       if (!m) continue;
+       m.transparent = true;
+       m.opacity = 0; // invisible
+       m.colorWrite = false; // don't write to color buffer
+       m.depthWrite = false; // don't write to depth buffer (prevents occlusion)
+       // optional (usually not needed once depthWrite=false):
+       // m.depthTest = false;
+       // m.toneMapped = false;
+     }
+   }
+ });
   navMesh.scale.set(5, 5, 5);
   navMesh.rotation.y = Math.PI * 1.2;
   scene.add(navMesh);
@@ -200,6 +255,10 @@ ui.btnIntroNext.addEventListener("click", async () => {
     bloom = { render: () => renderer.render(scene, camera) };
   }
 
+  // Lighting + kantOut (now that we have world + bloom)
+  setupCinematicLighting();
+  const kantOut = setupKantOut(worldRoot, bloom);
+
   // Switches & visuals (bloom passed into switches + finale)
   const switches = setupSwitches(
     worldRoot,
@@ -217,16 +276,13 @@ ui.btnIntroNext.addEventListener("click", async () => {
   switches.onToggle = (id, on) => {
     console.log("[Switch] toggled", { id, on });
 
-    // visuals
     crystals.setCrystalOn(id, on);
     runds.setRundOn(id, on);
 
-    // audio: latch the layer ON the first time this switch turns on
     if (on) {
       audio?.setLayerOn(id, true);
       console.log(`[Audio] latched layer${id + 1} ON`);
 
-      // optional: bloom the per-switch crystal/rund when they first turn on
       const cMesh = crystals.crystals?.get(id)?.mesh;
       const rMesh = runds.runds?.get(id)?.mesh;
       if (cMesh) {
@@ -239,36 +295,24 @@ ui.btnIntroNext.addEventListener("click", async () => {
       }
     }
 
-    // Finale when ALL 4 switches are ON
     const allOn = Array.from(switches.switches.values()).every((s) => s.on);
     if (allOn) {
       console.log("[Finale] all switches ON → arm finale");
       finale.arm();
+
+      // kick kantOut spin + stronger gold
+      if (kantOut.mesh) {
+        kantOut.spin = true;
+        bloom.setBoost?.(kantOut.mesh, { color: "#f6c453", intensity: 2.1 });
+      }
     }
   };
 
-  // Controls overlay → lock on click; ensure audio context active
-  ui.showOnly("controls");
-  ui.btnContinue.addEventListener(
-    "pointerdown",
-    (e) => {
-      audio?.context()?.resume?.();
-      requestLock(e);
-    },
-    { once: true }
-  );
-  ui.btnResume.addEventListener("pointerdown", (e) => {
-    audio?.context()?.resume?.();
-    requestLock(e);
-  });
-  ui.resume.addEventListener("pointerdown", (e) => {
-    if (e.target === ui.resume) {
-      audio?.context()?.resume?.();
-      requestLock(e);
-    }
-  });
+  // ----- DO NOT SHOW / RENDER THE WORLD YET -----
+  canvas.style.visibility = "hidden"; // hide scene while Controls are up
+  setScanlines(true); // keep CRT look for the UI
 
-  // Animate
+  // Prepare the animate loop but DO NOT start it yet
   const clock = new THREE.Clock();
   function animate() {
     const dt = Math.min(clock.getDelta(), MAX_DT);
@@ -276,10 +320,45 @@ ui.btnIntroNext.addEventListener("click", async () => {
     crystals.tick?.(dt);
     runds.tick?.(dt);
     finale.tick?.(dt);
-    bloom.render(); // render with selective bloom (or fallback)
+
+    // Temporarily hide navMesh for the render/composite pass
+    const wasVisible = navMesh.visible;
+    navMesh.visible = false;
+    bloom.render();
+    navMesh.visible = wasVisible;
+
     requestAnimationFrame(animate);
   }
-  animate();
+
+  // Show Controls screen now
+  ui.showOnly("controls");
+
+  // CONTINUE -> reveal scene, disable CRT overlays, lock pointer, start loop
+  ui.btnContinue.addEventListener(
+    "pointerdown",
+    (e) => {
+      audio?.context()?.resume?.();
+      canvas.style.visibility = "visible";
+      setScanlines(false);
+      requestLock(e);
+      animate(); // start rendering only now
+    },
+    { once: true }
+  );
+
+  // Resume handlers (keep scanlines off once we're in-game)
+  ui.btnResume.addEventListener("pointerdown", (e) => {
+    audio?.context()?.resume?.();
+    setScanlines(false);
+    requestLock(e);
+  });
+  ui.resume.addEventListener("pointerdown", (e) => {
+    if (e.target === ui.resume) {
+      audio?.context()?.resume?.();
+      setScanlines(false);
+      requestLock(e);
+    }
+  });
 });
 
 function whatDidIHit(obj) {

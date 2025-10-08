@@ -3,7 +3,7 @@ export function buildUI() {
   // root + theme classes (amber CRT look)
   const root = document.createElement("div");
   root.id = "ui-root";
-  root.classList.add("crt-theme", "crt-amber");
+  root.classList.add("crt-theme", "crt-green");
   document.body.appendChild(root);
 
   /* ---------- TITLE ---------- */
@@ -21,17 +21,15 @@ export function buildUI() {
   const intro = div("ui-overlay ui-intro");
   intro.innerHTML = `
     <div class="ui-card term" data-term-title="SYSTEM MESSAGE">
-      <h1 class="ui-title">READY</h1>
+      <h1 class="ui-title bloom-text">READY</h1>
       <div id="intro-typed" class="tw-block"></div>
       <button class="ui-button" id="btn-intro-next" disabled>Continue</button>
     </div>
   `;
   const btnIntroNext = intro.querySelector("#btn-intro-next");
   const introHost = intro.querySelector("#intro-typed");
-  // bloom for the heading
-  intro.querySelector(".ui-title")?.classList.add("bloom-text");
 
-  // Intro copy (edit freely). Right now both EN/Alien strings are the same
+  // Intro copy (edit freely). Right now EN/Alien are the same strings.
   let introPairs = [
     [
       "You wake in a city of humming circuits and sleeping giants.",
@@ -47,14 +45,20 @@ export function buildUI() {
     ],
   ];
 
-  let introPlayed = false;
+  // Guards to prevent double-start
+  let introStarted = false; // has typing begun
+  let typingActive = false; // is typing currently running
 
   async function playIntroTypewriter(
-    cps = 28, // characters per second
-    lineGapMs = 550, // pause after each EN+Alien pair completes
-    alienHeadStartMs = 60, // alien starts a beat after EN on each line
+    cps = 28, // chars/sec
+    lineGapMs = 550, // pause after each EN+Alien pair
+    alienHeadStartMs = 60,
     pairs = introPairs
   ) {
+    if (introStarted || typingActive) return; // <-- hard guard
+    introStarted = true;
+    typingActive = true;
+
     btnIntroNext.disabled = true;
     await typewriteLines(introHost, pairs, {
       cps,
@@ -62,7 +66,8 @@ export function buildUI() {
       alienHeadStartMs,
     });
     btnIntroNext.disabled = false;
-    introPlayed = true;
+
+    typingActive = false;
   }
 
   function setIntroPairs(pairs) {
@@ -73,7 +78,7 @@ export function buildUI() {
   const loading = div("ui-overlay ui-loading");
   loading.innerHTML = `
     <div class="ui-card small term" data-term-title="LOADING">
-      <div class="ui-loading-title">Loading…</div>
+      <div class="ui-loading-title bloom-text">Loading…</div>
       <div class="ui-progress"><div class="ui-progress-bar" id="ui-bar"></div></div>
     </div>
   `;
@@ -86,13 +91,12 @@ export function buildUI() {
       <h2 class="bloom-text">Controls</h2>
 
       <div class="controls-visual">
-        <!-- WASD cluster -->
         <svg class="wasd" viewBox="0 0 220 120" aria-label="WASD keys">
           <g class="key" id="key-w" transform="translate(85,10)">
             <rect class="key-bg" width="50" height="50" rx="10"/>
             <text x="25" y="32" class="key-label">W</text>
           </g>
-        <g class="key" id="key-a" transform="translate(30,65)">
+          <g class="key" id="key-a" transform="translate(30,65)">
             <rect class="key-bg" width="50" height="50" rx="10"/>
             <text x="25" y="32" class="key-label">A</text>
           </g>
@@ -106,20 +110,20 @@ export function buildUI() {
           </g>
         </svg>
 
-        <!-- Mouse -->
         <svg class="mouse" viewBox="0 0 120 140" aria-label="Mouse">
           <g class="mouse-body">
             <path d="M60 10 c25 0 45 20 45 45 v35 c0 22 -20 40 -45 40 s-45 -18 -45 -40 v-35 c0 -25 20 -45 45 -45 z"/>
             <line x1="60" y1="15" x2="60" y2="70" class="mouse-split"/>
             <rect x="56" y="40" width="8" height="16" rx="3" class="mouse-wheel"/>
           </g>
-          <text x="60" y="130" class="mouse-label" text-anchor="middle">Look / Click</text>
+          <text x="60" y="130" class="mouse-label"
         </svg>
       </div>
 
       <ul class="ui-list">
         <li><strong>WASD</strong> — Move</li>
         <li><strong>Mouse</strong> — Look &amp; Click to interact</li>
+        <li><strong>Shift</strong> — Run</li>
       </ul>
 
       <button class="ui-button" id="btn-continue">Continue</button>
@@ -127,7 +131,7 @@ export function buildUI() {
   `;
   const btnContinue = controls.querySelector("#btn-continue");
 
-  /* ---------- RESUME (black bg handled in CSS via .ui-resume) ---------- */
+  /* ---------- RESUME (black bg set in CSS) ---------- */
   const resume = div("ui-overlay ui-resume");
   resume.innerHTML = `
     <div class="ui-card small term" data-term-title="PAUSED">
@@ -152,10 +156,8 @@ export function buildUI() {
         ? "flex"
         : "none";
     }
-    // Auto-run the typewriter the first time Intro appears
-    if (name === "intro" && !introPlayed) {
-      playIntroTypewriter();
-    }
+    // Start typing the first time Intro is shown (guarded)
+    if (name === "intro") playIntroTypewriter();
   }
 
   return {
@@ -186,18 +188,13 @@ function div(cls) {
   d.className = cls;
   return d;
 }
-
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
- * Typewriter that writes ONE pair at a time (English on top, Alien just after).
+ * Typewriter that writes ONE pair at a time (English on top, Alien beneath).
  * pairs = [ [english, alien], ... ]
- * Options:
- *  - cps: chars/second
- *  - lineGapMs: pause after each pair
- *  - alienHeadStartMs: delay before alien starts (per pair)
  */
 async function typewriteLines(
   host,
@@ -205,46 +202,38 @@ async function typewriteLines(
   { cps = 28, lineGapMs = 550, alienHeadStartMs = 60 } = {}
 ) {
   host.innerHTML = "";
-  const delay = 1000 / Math.max(1, cps);
+  const charDelay = 1000 / Math.max(1, cps);
 
   for (const [enText, alText] of pairs) {
-    // Line container
     const row = document.createElement("div");
     row.className = "tw-line";
 
-    // English (top)
     const enEl = document.createElement("div");
     enEl.className = "tw-en bloom-text";
 
-    // Alien (under)
     const alEl = document.createElement("div");
     alEl.className = "tw-alien bloom-text";
 
     row.append(enEl, alEl);
     host.appendChild(row);
 
-    // Start typing english
-    const enPromise = typeText(enEl, enText, delay);
-    // Alien starts slightly after
+    const enP = typeText(enEl, enText, charDelay);
     await sleep(alienHeadStartMs);
-    const alPromise = typeText(alEl, alText, delay);
+    const alP = typeText(alEl, alText, charDelay);
 
-    // Wait until both are done, then pause before next pair
-    await Promise.all([enPromise, alPromise]);
+    await Promise.all([enP, alP]);
     await sleep(lineGapMs);
   }
 }
 
-function typeText(el, text, charDelay) {
+function typeText(el, text, delay) {
   return new Promise((resolve) => {
     let i = 0;
     (function step() {
       if (i < text.length) {
         el.textContent += text[i++];
-        setTimeout(step, charDelay);
-      } else {
-        resolve();
-      }
+        setTimeout(step, delay);
+      } else resolve();
     })();
   });
 }

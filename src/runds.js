@@ -2,7 +2,7 @@
 import * as THREE from "three";
 
 const RUND_ON_COLOR = new THREE.Color("#a855f7"); // purple
-const RUND_EMISSIVE_INTENSITY = 1.8;
+const RUND_EMISSIVE_INTENSITY = 2;
 const SPIN_SPEED = 0.8; // radians/sec
 
 export function setupRunds(worldRoot) {

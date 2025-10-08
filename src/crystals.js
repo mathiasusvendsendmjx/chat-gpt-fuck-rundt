@@ -2,7 +2,7 @@
 import * as THREE from "three";
 
 const CRYSTAL_ON_COLOR = new THREE.Color("#4ade80");
-const CRYSTAL_EMISSIVE_INTENSITY = 1.8;
+const CRYSTAL_EMISSIVE_INTENSITY = 2;
 
 export function setupCrystals(worldRoot) {
   // id -> { mesh, on, spin }

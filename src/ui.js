@@ -9,9 +9,9 @@ export function buildUI() {
   /* ---------- TITLE ---------- */
   const title = div("ui-overlay ui-title-screen");
   title.innerHTML = `
-    <div class="ui-card hero term" data-term-title="*** PAGE READY ***">
+    <div class="ui-card hero term" data-term-title="*** (^:<>:^) ***">
       <h1 class="ui-hero-title bloom-text">HESKUF</h1>
-      <p class="ui-hero-sub bloom-text">an interactive music world</p>
+      <p class="ui-hero-sub bloom-text">Indsæt tekst</p>
       <button class="ui-button" id="btn-start-title">Start</button>
     </div>
   `;
@@ -21,7 +21,7 @@ export function buildUI() {
   const intro = div("ui-overlay ui-intro");
   intro.innerHTML = `
     <div class="ui-card term" data-term-title="SYSTEM MESSAGE">
-      <h1 class="ui-title bloom-text">READY</h1>
+      <h1 class="ui-title bloom-text">Tekst</h1>
       <div id="intro-typed" class="tw-block"></div>
       <button class="ui-button" id="btn-intro-next" disabled>Continue</button>
     </div>
@@ -31,18 +31,8 @@ export function buildUI() {
 
   // Intro copy (edit freely). Right now EN/Alien are the same strings.
   let introPairs = [
-    [
-      "You wake in a city of humming circuits and sleeping giants.",
-      "You wake in a city of humming circuits and sleeping giants.",
-    ],
-    [
-      "Four switches stir the heart of the machine.",
-      "Four switches stir the heart of the machine.",
-    ],
-    [
-      "Find them. Align them. Let the world sing.",
-      "Find them. Align them. Let the world sing.",
-    ],
+    ["Indsæt tekst", "Indsæt tekst"],
+    ["Indsæt tekst", "Indsæt tekst"],
   ];
 
   // Guards to prevent double-start

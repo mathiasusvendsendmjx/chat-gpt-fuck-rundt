@@ -9,6 +9,7 @@ import { makeHitXZ } from "./nav.js";
 import { setupSwitches } from "./switches.js";
 import { setupCrystals } from "./crystals.js";
 import { setupRunds } from "./runds.js";
+import { setupAround } from "./around.js";
 import { createLayerMixer } from "./audio_layers.js";
 import { setupFinale } from "./finale.js";
 import { setupBloom } from "./bloom.js";
@@ -19,18 +20,32 @@ import {
   MAX_DT,
 } from "./config.js";
 
+/* ------------------- Bloom knobs (ONE place to tweak) ------------------- */
+const BLOOM = {
+  post: { threshold: 0.12, strength: 1.35, radius: 0.65 }, // pipeline
+  palette: {
+    crystal: { color: "#4ade80", intensity: 2.0 },
+    rund: { color: "#a855f7", intensity: 2.0 },
+    switch: { color: "#60a5fa", intensity: 0.5 },
+    kantOut: { color: "#ffd45a", intensity: 0.5 }, // richer gold
+    around: { color: "#0fe6d4", intensity: 0.5 },
+    // used if mark() happens without an explicit boost:
+    default: { color: "#ffffff", intensity: 1.0 },
+  },
+};
+
 const ui = buildUI();
-ui.showOnly("title"); // Title screen first
-setScanlines(true); // show CRT overlays for UI by default
+ui.showOnly("title");
+setScanlines(true); // CRT overlays on for UI
 
 function setScanlines(on) {
   ui.root.classList.toggle("noscan", !on);
 }
 
+/* ------------------- Renderer / camera pose ------------------- */
 const canvas = renderer.domElement;
 if (!canvas.hasAttribute("tabindex")) canvas.setAttribute("tabindex", "-1");
 
-// Initial camera pose
 camera.position.set(140, EYE_HEIGHT, -100);
 setFromDegrees(START_YAW_DEG, START_PITCH_DEG);
 function setFromDegrees(yawDeg, pitchDeg) {
@@ -42,21 +57,21 @@ function setFromDegrees(yawDeg, pitchDeg) {
   );
 }
 
-// Controls / movement
+/* ------------------- Movement / controls ------------------- */
 const { controls, update } = setupMovement(camera, renderer);
 
-/* ============ CAMERA LIGHT RIG (wide spot + shoulder fill) ============ */
+/* ------------------- Camera light rig (wide spot + shoulder) ------------------- */
 scene.add(camera);
 const flashRig = new THREE.Object3D();
 camera.add(flashRig);
 
 const flashlight = new THREE.SpotLight(
-  0xffffff, // color
-  70, // intensity
-  350, // distance
-  THREE.MathUtils.degToRad(65), // cone
-  0.95, // penumbra
-  1.0 // decay
+  0xffffff,
+  70,
+  350,
+  THREE.MathUtils.degToRad(65),
+  0.95,
+  1.0
 );
 flashlight.castShadow = false;
 flashRig.add(flashlight);
@@ -72,51 +87,58 @@ shoulder.position.set(0.15, -0.05, -0.25);
 
 renderer.toneMappingExposure = 1.15;
 
-/* ============ WORLD FILL + FOG ============ */
+/* ------------------- Gentle global lights + fog ------------------- */
 function setupCinematicLighting() {
   const hemi = new THREE.HemisphereLight(0x1ce0a1, 0x060907, 0.35);
   scene.add(hemi);
-
   const amb = new THREE.AmbientLight(0x0e1512, 0.18);
   scene.add(amb);
-
   scene.fog = new THREE.FogExp2(0x000000, 0.002);
 }
 
-/* ============ KANT OUT HELPER (runs after world+bloom ready) ============ */
+/* ------------------- helpers: make bloom ignore emissive ------------------- */
+function flattenEmissive(mesh) {
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  for (const m of mats) {
+    if (!m || !("emissive" in m)) continue;
+    m.emissive.setRGB(0, 0, 0);
+    m.emissiveIntensity = 0;
+    m.needsUpdate = true;
+  }
+}
+
+/* ------------------- kantOut helper (after world+bloom) ------------------- */
 function setupKantOut(worldRoot, bloom) {
   let mesh = null;
   worldRoot.traverse((o) => {
-    const name = (o.name || "").toLowerCase();
-    if (o.isMesh && (name === "kantout" || /^kantout\b/.test(name))) {
+    const nm = (o.name || "").toLowerCase();
+    if (o.isMesh && (nm === "kantout" || /^kantout\b/.test(nm))) {
       mesh = o;
-      // pre-glow gold
-      bloom?.setBoost?.(o, { color: "#f6c453", intensity: 1.6 });
+      flattenEmissive(o);
+      bloom?.setBoost?.(o, BLOOM.palette.kantOut);
       bloom?.mark?.(o, true);
       console.log("[Bloom] kantOut marked:", o.name);
     }
   });
-  if (!mesh) console.warn("[Bloom] kantOut not found in scene");
+  if (!mesh) console.warn("[Bloom] kantOut not found");
   return { mesh, spin: false };
 }
 
-/* ---------- Pointer lock ↔ UI ---------- */
+/* ------------------- Pointer lock ↔ UI ------------------- */
 let wantingLock = false;
 
 controls.addEventListener("lock", () => {
   wantingLock = false;
   canvas.style.cursor = "none";
-  setScanlines(false); // HIDE scanlines in-game
+  setScanlines(false); // hide CRT overlays in-game
   ui.showOnly(null);
 });
-
 controls.addEventListener("unlock", () => {
   wantingLock = false;
   canvas.style.cursor = "default";
-  setScanlines(true); // RESTORE scanlines on UI
+  setScanlines(true);
   ui.showOnly("resume");
 });
-
 document.addEventListener("pointerlockerror", () => {
   wantingLock = false;
   canvas.style.cursor = "default";
@@ -140,40 +162,8 @@ function requestLock(e) {
   }
 }
 
-/* ---------- DEBUG helper ---------- */
-function forceEmissiveOn(objNames, { color = "#4ade80", intensity = 3 } = {}) {
-  if (!window.worldRoot) return;
-  const want = new Set(objNames.map((n) => String(n).toLowerCase()));
-  window.worldRoot.traverse((o) => {
-    if (!o.isMesh) return;
-    const nm = (o.name || "").toLowerCase();
-    if (!want.has(nm)) return;
-    const makeStd = (m) =>
-      !m || !("emissive" in m)
-        ? new THREE.MeshStandardMaterial({
-            color: m?.color ? m.color.clone() : new THREE.Color("#9a9a9a"),
-            metalness: 0.1,
-            roughness: 0.6,
-          })
-        : m.clone();
-    if (Array.isArray(o.material)) o.material = o.material.map(makeStd);
-    else o.material = makeStd(o.material);
-    const mats = Array.isArray(o.material) ? o.material : [o.material];
-    for (const m of mats) {
-      if (!("emissive" in m)) continue;
-      m.emissive = new THREE.Color(color);
-      m.emissiveIntensity = intensity;
-      m.needsUpdate = true;
-    }
-    console.log("Emissive forced ON:", o.name);
-  });
-}
-/* ---------------------------------- */
-
-// ====== FLOW ======
-
-// Music starts on the TITLE "Start" button
-let audio; // keep reference globally
+/* ------------------- FLOW ------------------- */
+let audio; // global
 ui.btnStartTitle.addEventListener("click", async () => {
   try {
     audio = createLayerMixer({
@@ -188,18 +178,17 @@ ui.btnStartTitle.addEventListener("click", async () => {
     });
     await audio.init();
     await audio.context()?.resume?.();
-    audio.fadeBackgroundTo?.(1, 1.2); // fade in bg music
+    audio.fadeBackgroundTo?.(1, 1.2);
     console.log("[Audio] background playing");
   } catch (e) {
     console.error("[Audio] init/resume failed:", e);
   }
 
-  // Show intro + typewriter
   ui.showOnly("intro");
   ui.playIntroTypewriter?.();
 });
 
-// INTRO → Continue → load the world
+// Intro → Continue → load world
 ui.btnIntroNext.addEventListener("click", async () => {
   console.log("[UI] Intro Continue clicked");
   ui.showOnly("loading");
@@ -214,21 +203,19 @@ ui.btnIntroNext.addEventListener("click", async () => {
   scene.add(worldRoot);
   window.worldRoot = worldRoot;
 
- navMesh.traverse((o) => {
-   if (o.isMesh) {
-     const mats = Array.isArray(o.material) ? o.material : [o.material];
-     for (const m of mats) {
-       if (!m) continue;
-       m.transparent = true;
-       m.opacity = 0; // invisible
-       m.colorWrite = false; // don't write to color buffer
-       m.depthWrite = false; // don't write to depth buffer (prevents occlusion)
-       // optional (usually not needed once depthWrite=false):
-       // m.depthTest = false;
-       // m.toneMapped = false;
-     }
-   }
- });
+  // Nav mesh must NOT occlude bloom
+  navMesh.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m) continue;
+      m.transparent = true;
+      m.opacity = 0;
+      m.colorWrite = false;
+      m.depthWrite = false; // critical
+      m.toneMapped = false;
+    }
+  });
   navMesh.scale.set(5, 5, 5);
   navMesh.rotation.y = Math.PI * 1.2;
   scene.add(navMesh);
@@ -240,26 +227,37 @@ ui.btnIntroNext.addEventListener("click", async () => {
   const h = hitXZ(c.x, c.z);
   if (h) camera.position.set(h.x, h.y + EYE_HEIGHT, h.z);
 
-  // --- BLOOM (safe, with fallback) ---
+  // --- BLOOM ---
   let bloom;
   try {
     console.log("[Bloom] setting up…");
-    bloom = setupBloom(renderer, scene, camera, {
-      threshold: 0.1,
-      strength: 1,
-      radius: 1,
-    });
+    bloom = setupBloom(renderer, scene, camera, BLOOM.post);
+    // if your bloom.js has setDefaultBoost (my version does), use it:
+    bloom.setDefaultBoost?.(BLOOM.palette.default);
     console.log("[Bloom] ready");
   } catch (err) {
     console.error("[Bloom] setup failed, using plain render:", err);
     bloom = { render: () => renderer.render(scene, camera) };
   }
 
-  // Lighting + kantOut (now that we have world + bloom)
+  // Lighting + highlights
   setupCinematicLighting();
   const kantOut = setupKantOut(worldRoot, bloom);
 
-  // Switches & visuals (bloom passed into switches + finale)
+  // Around rings tied to switches
+  const around = setupAround(worldRoot, bloom, {
+    color: BLOOM.palette.around.color,
+    intensityOn: BLOOM.palette.around.intensity,
+  });
+  // flatten emissive on around meshes so bloom is the only glow
+  if (around.arounds) {
+    for (const { mesh } of around.arounds.values()) {
+      flattenEmissive(mesh);
+      bloom.setBoost?.(mesh, BLOOM.palette.around); // ensure consistent boost
+    }
+  }
+
+  // Other systems
   const switches = setupSwitches(
     worldRoot,
     renderer,
@@ -272,25 +270,28 @@ ui.btnIntroNext.addEventListener("click", async () => {
   const runds = setupRunds(worldRoot);
   const finale = setupFinale(worldRoot, bloom);
 
-  // LAYER BINDING: latch-on layers when a switch turns ON
+  // Map switch -> visuals/audio/around
   switches.onToggle = (id, on) => {
     console.log("[Switch] toggled", { id, on });
 
     crystals.setCrystalOn(id, on);
     runds.setRundOn(id, on);
+    around.setAroundOn?.(id, on); // around1..4 follow switches 0..3
 
     if (on) {
       audio?.setLayerOn(id, true);
-      console.log(`[Audio] latched layer${id + 1} ON`);
 
+      // bloom the per-switch crystal/rund (and neutralize emissive)
       const cMesh = crystals.crystals?.get(id)?.mesh;
       const rMesh = runds.runds?.get(id)?.mesh;
       if (cMesh) {
-        bloom.setBoost?.(cMesh, { color: "#4ade80", intensity: 2 });
+        flattenEmissive(cMesh);
+        bloom.setBoost?.(cMesh, BLOOM.palette.crystal);
         bloom.mark?.(cMesh, true);
       }
       if (rMesh) {
-        bloom.setBoost?.(rMesh, { color: "#a855f7", intensity: 2 });
+        flattenEmissive(rMesh);
+        bloom.setBoost?.(rMesh, BLOOM.palette.rund);
         bloom.mark?.(rMesh, true);
       }
     }
@@ -300,28 +301,25 @@ ui.btnIntroNext.addEventListener("click", async () => {
       console.log("[Finale] all switches ON → arm finale");
       finale.arm();
 
-      // kick kantOut spin + stronger gold
-      if (kantOut.mesh) {
-        kantOut.spin = true;
-        bloom.setBoost?.(kantOut.mesh, { color: "#f6c453", intensity: 2.1 });
-      }
+      // punch kantOut a bit more at finale
+      if (kantOut.mesh) bloom.setBoost?.(kantOut.mesh, BLOOM.palette.kantOut);
     }
   };
 
-  // ----- DO NOT SHOW / RENDER THE WORLD YET -----
-  canvas.style.visibility = "hidden"; // hide scene while Controls are up
-  setScanlines(true); // keep CRT look for the UI
+  // Hide scene behind Controls; start render only after Continue
+  canvas.style.visibility = "hidden";
+  setScanlines(true);
 
-  // Prepare the animate loop but DO NOT start it yet
   const clock = new THREE.Clock();
   function animate() {
     const dt = Math.min(clock.getDelta(), MAX_DT);
     update(dt, hitXZ, EYE_HEIGHT);
     crystals.tick?.(dt);
     runds.tick?.(dt);
+    around.tick?.(dt);
     finale.tick?.(dt);
 
-    // Temporarily hide navMesh for the render/composite pass
+    // prevent navMesh from affecting any pass
     const wasVisible = navMesh.visible;
     navMesh.visible = false;
     bloom.render();
@@ -330,10 +328,8 @@ ui.btnIntroNext.addEventListener("click", async () => {
     requestAnimationFrame(animate);
   }
 
-  // Show Controls screen now
   ui.showOnly("controls");
 
-  // CONTINUE -> reveal scene, disable CRT overlays, lock pointer, start loop
   ui.btnContinue.addEventListener(
     "pointerdown",
     (e) => {
@@ -341,12 +337,11 @@ ui.btnIntroNext.addEventListener("click", async () => {
       canvas.style.visibility = "visible";
       setScanlines(false);
       requestLock(e);
-      animate(); // start rendering only now
+      animate();
     },
     { once: true }
   );
 
-  // Resume handlers (keep scanlines off once we're in-game)
   ui.btnResume.addEventListener("pointerdown", (e) => {
     audio?.context()?.resume?.();
     setScanlines(false);
@@ -364,3 +359,4 @@ ui.btnIntroNext.addEventListener("click", async () => {
 function whatDidIHit(obj) {
   console.log("hit", obj.name, obj.userData);
 }
+window.whatDidIHit = whatDidIHit;

@@ -9,16 +9,20 @@ const BLOOM_LAYER_ID = 1;
 const bloomLayer = new THREE.Layers();
 bloomLayer.set(BLOOM_LAYER_ID);
 
-const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const darkMaterial = new THREE.MeshBasicMaterial({
+  color: 0x000000,
+  toneMapped: false,
+});
 const savedMaterials = Object.create(null);
-const boostMaterials = Object.create(null); // uuid -> bright temp material
+const boostMaterials = Object.create(null); // uuid -> MeshBasicMaterial we use during the bloom pass
 
 export function setupBloom(
   renderer,
   scene,
   camera,
-  { threshold = 0.5, strength = 1, radius = 0.2 } = {}
+  { threshold = 0.12, strength = 1.35, radius = 0.65 } = {}
 ) {
+  // --- passes ---
   const size = new THREE.Vector2();
   renderer.getSize(size);
 
@@ -37,22 +41,22 @@ export function setupBloom(
         bloomTexture: { value: bloomComposer.renderTarget2.texture },
       },
       vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-      }
-    `,
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        }
+      `,
       fragmentShader: `
-      uniform sampler2D baseTexture;
-      uniform sampler2D bloomTexture;
-      varying vec2 vUv;
-      void main() {
-        vec4 base  = texture2D(baseTexture,  vUv);
-        vec4 bloom = texture2D(bloomTexture, vUv);
-        gl_FragColor = base + bloom; // additive
-      }
-    `,
+        uniform sampler2D baseTexture;
+        uniform sampler2D bloomTexture;
+        varying vec2 vUv;
+        void main() {
+          vec4 base  = texture2D(baseTexture,  vUv);
+          vec4 bloom = texture2D(bloomTexture, vUv);
+          gl_FragColor = base + bloom; // additive
+        }
+      `,
     }),
     "baseTexture"
   );
@@ -61,34 +65,50 @@ export function setupBloom(
   finalComposer.addPass(renderScene);
   finalComposer.addPass(finalPass);
 
-  // During the bloom pass:
-  // - Non-bloom objects -> darkMaterial (black)
-  // - Bloom objects -> keep original OR (if boost set) swap to a bright temp material
-function prepareBloom(obj) {
-  if (!obj.isMesh) return;
+  // ---- GLOBAL DEFAULT BOOST (used if you mark() without setBoost()) ----
+  let defaultBoost = {
+    color: new THREE.Color(0xffffff),
+    intensity: 1.0, // we multiply the color by this
+  };
 
-  const isBloom = bloomLayer.test(obj.layers);
-  savedMaterials[obj.uuid] = obj.material;
-
-  if (!isBloom) {
-    obj.material = darkMaterial;
-    return;
+  function setDefaultBoost({ color = "#ffffff", intensity = 1.0 } = {}) {
+    defaultBoost = {
+      color: color instanceof THREE.Color ? color : new THREE.Color(color),
+      intensity: intensity ?? 1.0,
+    };
   }
 
-  const boost = obj.userData._bloomBoost;
-  if (boost) {
+  // During bloom pass: non-bloom objects -> black. Bloom objects -> bright temp material.
+  function prepareBloom(obj) {
+    if (!obj.isMesh) return;
+
+    savedMaterials[obj.uuid] = obj.material;
+
+    // Not on bloom layer? make black.
+    if (!bloomLayer.test(obj.layers)) {
+      obj.material = darkMaterial;
+      return;
+    }
+
+    // Pull the requested boost or fall back to the default boost.
+    const boost = obj.userData._bloomBoost || defaultBoost;
+
+    // Cache a bright MeshBasicMaterial per mesh and keep it in sync.
     let m = boostMaterials[obj.uuid];
     if (!m) {
-      m = new THREE.MeshBasicMaterial({ color: boost.color.clone() });
+      m = new THREE.MeshBasicMaterial({ toneMapped: true });
       boostMaterials[obj.uuid] = m;
-    } else {
-      // keep material color in sync with latest boost request
-      m.color.copy(boost.color);
-      m.needsUpdate = true;
     }
+    // color * intensity (values >1 are OK when toneMapped=true)
+    const c =
+      boost.color instanceof THREE.Color
+        ? boost.color.clone()
+        : new THREE.Color(boost.color);
+    m.color.copy(c).multiplyScalar(boost.intensity ?? 1.0);
+    m.needsUpdate = true;
+
     obj.material = m;
   }
-}
 
   function restoreMaterial(obj) {
     if (!obj.isMesh) return;
@@ -103,7 +123,6 @@ function prepareBloom(obj) {
     scene.traverse(prepareBloom);
     bloomComposer.render();
     scene.traverse(restoreMaterial);
-
     finalComposer.render();
   }
 
@@ -127,23 +146,10 @@ function prepareBloom(obj) {
       if (o.isMesh && (o.name || "").toLowerCase() === want) mark(o, on);
     });
   }
-  // inside setupBloom(...)
-  function setBoost(obj, { color = "#ffffff", intensity = 2 } = {}) {
+  function setBoost(obj, { color = "#ffffff", intensity = 1 } = {}) {
     if (!obj) return;
-
-    // store desired bloom color/intensity on the mesh
     const c = color instanceof THREE.Color ? color : new THREE.Color(color);
-    obj.userData._bloomBoost = { color: c, intensity };
-
-    // ensure there is a cached bright material AND keep it up to date
-    let m = boostMaterials[obj.uuid];
-    if (!m) {
-      m = new THREE.MeshBasicMaterial({ color: c.clone() });
-      boostMaterials[obj.uuid] = m;
-    } else {
-      m.color.copy(c);
-      m.needsUpdate = true;
-    }
+    obj.userData._bloomBoost = { color: c, intensity: intensity ?? 1 };
   }
   function setBoostByName(root, name, opts) {
     const want = String(name).toLowerCase();
@@ -165,6 +171,7 @@ function prepareBloom(obj) {
     setBoost,
     setBoostByName,
     setParams,
+    setDefaultBoost, // ⬅ NEW
     BLOOM_LAYER_ID,
   };
 }

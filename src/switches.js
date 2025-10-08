@@ -4,7 +4,7 @@ import * as THREE from "three";
 const INTERACT_MAX_DIST = 100;
 const HOVER_BLOOM_COLOR = "#f59e0b"; // orange
 const ON_BLOOM_COLOR = "#4ade80"; // green
-const BLOOM_INTENSITY = 2;
+const BLOOM_INTENSITY = 1.5;
 
 export function setupSwitches(
   worldRoot,

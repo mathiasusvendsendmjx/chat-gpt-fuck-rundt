@@ -11,7 +11,7 @@ export function buildUI() {
     <div class="ui-card hero term" data-term-title="System Boot">
       <h1 class="ui-hero-title tw-en"    id="title-hero-en"></h1>
       <h1 class="ui-hero-title tw-alien" id="title-hero-alien" aria-hidden="true"></h1>
-      <button class="ui-button" id="btn-start-title">Continue</button>
+      <button class="ui-button" id="btn-start-title">Start Game</button>
     </div>
   `;
   const btnStartTitle = title.querySelector("#btn-start-title");
@@ -171,10 +171,9 @@ export function buildUI() {
       <ul class="ui-list">
         <li><strong>WASD</strong> — Move</li>
         <li><strong>Mouse</strong> — Look &amp; Click to interact</li>
-        <li><strong>Shift</strong> — Run</li>
         <li><strong>Esc</strong> — Leave game</li>
       </ul>
-      <button class="ui-button" id="btn-continue">Continue</button>
+      <button class="ui-button" id="btn-continue">Wake Up</button>
     </div>
   `;
   const btnContinue = controls.querySelector("#btn-continue");

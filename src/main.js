@@ -159,7 +159,7 @@ const flashRig = new THREE.Object3D();
 camera.add(flashRig);
 const flashlight = new THREE.SpotLight(
   0xffffff,
-  100,
+  110,
   500,
   THREE.MathUtils.degToRad(65),
   0.75,
